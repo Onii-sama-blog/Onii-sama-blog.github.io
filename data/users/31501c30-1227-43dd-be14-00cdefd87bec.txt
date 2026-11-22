@@ -1,0 +1,10 @@
+{
+  "id": "31501c30-1227-43dd-be14-00cdefd87bec",
+  "username": "Takip12",
+  "passwordHash": "5f60d76befd131237c224611a4a35ad3db6b435538b7a8081197cef1976c8650",
+  "role": "editor",
+  "bio": "",
+  "avatar": "",
+  "website": "",
+  "createdAt": 1795345389931
+}
