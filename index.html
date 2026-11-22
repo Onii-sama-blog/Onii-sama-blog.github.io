@@ -761,6 +761,11 @@ const canViewPost = (post, viewer = state.currentUser) => {
   if(isUserBanned(post.authorId)) return !!(viewer && (viewer.role === 'admin' || viewer.id === post.authorId));
   return true;
 };
+const canViewInFeed = (post, viewer = state.currentUser) => {
+  if(!post || post.status !== 'published') return false;
+  if(isUserBanned(post.authorId)) return !!(viewer && viewer.id === post.authorId);
+  return true;
+};
 const generateUnlockCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const arr = new Uint8Array(8);
@@ -768,8 +773,8 @@ const generateUnlockCode = () => {
   const s = Array.from(arr, b => chars[b % chars.length]).join('');
   return `ONII-${s.slice(0, 4)}-${s.slice(4, 8)}`;
 };
-const getPostsByCategory = (cat) => (cat ? state.posts.filter(p => p.category === cat && p.status === 'published') : state.posts.filter(p => p.status === 'published')).filter(p => canViewPost(p));
-const getPublishedPosts = () => state.posts.filter(p => p.status === 'published' && canViewPost(p)).sort((a,b)=>b.createdAt - a.createdAt);
+const getPostsByCategory = (cat) => (cat ? state.posts.filter(p => p.category === cat) : state.posts).filter(p => canViewInFeed(p));
+const getPublishedPosts = () => state.posts.filter(p => canViewInFeed(p)).sort((a,b)=>b.createdAt - a.createdAt);
 const getUserPosts = (userId) => state.posts.filter(p => p.authorId === userId).sort((a,b)=>b.createdAt - a.createdAt);
 const SITE_URL = 'https://onii-sama-blog.github.io/';
 const formatWebsiteLink = (url) => {
@@ -1058,8 +1063,21 @@ function renderPost(app, id) {
 
   const section = el('div', {class:'container'});
   const stage = el('div', {class:'post-stage'});
+  const authorIsBanned = isUserBanned(post.authorId);
   const sheet = el('article', {class:`post-sheet ${enterAnimClass}`});
   sheet.innerHTML = `
+    ${authorIsBanned ? `
+      <div class="sync-banner" style="border-color:var(--danger);background:#ff475718;margin-bottom:1.25rem;padding:0.85rem 1rem">
+        <div>
+          <strong style="color:var(--danger)">${u && u.id === post.authorId ? '🚫 Banlısınız' : '🚫 Banlı Kullanıcı Paylaşımı'}</strong>
+          <p style="font-size:0.85rem;color:var(--muted);margin-top:0.15rem">
+            ${u && u.id === post.authorId
+              ? 'Banınız kalkana kadar bu paylaşım yalnızca size görünür; diğer kullanıcılar ve anasayfada gizlidir.'
+              : 'Bu yazar şu an banlı olduğu için bu paylaşım Anasayfa ve genel listelerde gizlidir (yalnızca Kullanıcılar profilinden görüntülenir).'}
+          </p>
+        </div>
+      </div>
+    ` : ''}
     <header class="post-header">
       <div class="post-meta">
         <span>${fmtDate(post.createdAt)}</span>
@@ -1229,7 +1247,8 @@ function renderAuthorsList(app) {
   const grid = el('div', {style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem'});
   state.users.forEach(u => {
     const count = getUserPosts(u.id).filter(p => p.status==='published' && canViewPost(p)).length;
-    grid.append(html(`<a href="#/author?id=${u.id}" class="card" style="text-align:center;padding:2rem;text-decoration:none"><div class="profile-avatar" style="width:72px;height:72px;font-size:1.75rem;margin:0 auto 1rem">${avatarHtml(u)}</div><h3 style="margin-bottom:0.4rem">${esc(u.username)}</h3><div style="margin-bottom:0.5rem">${roleBadge(u.role)}</div><p style="color:var(--muted);font-size:0.9rem">${count} yazı</p></a>`));
+    const banTag = (u.banned && state.currentUser?.role === 'admin') ? ' <span class="badge badge-rejected">🚫 Banlı</span>' : '';
+    grid.append(html(`<a href="#/author?id=${u.id}" class="card" style="text-align:center;padding:2rem;text-decoration:none"><div class="profile-avatar" style="width:72px;height:72px;font-size:1.75rem;margin:0 auto 1rem">${avatarHtml(u)}</div><h3 style="margin-bottom:0.4rem">${esc(u.username)}</h3><div style="margin-bottom:0.5rem">${roleBadge(u.role)}${banTag}</div><p style="color:var(--muted);font-size:0.9rem">${count} yazı</p></a>`));
   });
   section.append(grid);
   if(!state.users.length) section.append(el('p', {style:'text-align:center;color:var(--muted);margin-top:2rem'}, 'Henüz kayıtlı kullanıcı yok.'));
@@ -1944,6 +1963,7 @@ function renderPostEditor(main, id, { propose = false } = {}) {
       </div>
     </div>
     <div class="card" style="max-width:900px">
+      ${!propose && isUserBanned(u.id) ? `<div style="background:#ff475718;border:1px solid var(--danger);border-radius:var(--radius-sm);padding:0.85rem 1rem;margin-bottom:1rem;font-size:0.88rem"><strong style="color:var(--danger)">🚫 Banlısınız:</strong> Paylaşacağınız yazılar banınız kalkana kadar yalnızca size görünür.</div>` : ''}
       ${propose ? `<div class="form-group"><label>Düzenleme Notu (Yazar için açıklama)</label><input id="edit-request-note" placeholder="Örn: Yazım hataları düzeltildi, giriş paragrafı akıcı hale getirildi..."></div>` : ''}
       <div class="form-group"><label>Başlık</label><input id="post-title" value="${esc(post.title)}" placeholder="Yazı başlığı"></div>
       <div class="form-row">
