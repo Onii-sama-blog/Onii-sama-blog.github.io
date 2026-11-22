@@ -38,5 +38,13 @@
     "text": "iyi azına  tekrar banlayım dedim haaaa",
     "createdAt": 1795348995886,
     "read": false
+  },
+  {
+    "id": "45dc7848-da23-4f1e-a248-ad4178af3fcc",
+    "fromId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
+    "toId": "31501c30-1227-43dd-be14-00cdefd87bec",
+    "text": "Ban kaldırma onay kodun: ONII-4753-74H9",
+    "createdAt": 1795349001284,
+    "read": false
   }
 ]
