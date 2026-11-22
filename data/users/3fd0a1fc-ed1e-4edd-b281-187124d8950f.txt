@@ -3,7 +3,7 @@
   "username": "Kob09",
   "passwordHash": "4afd8ff57d26e7bf2f0e37be7fe20e8998ff45b3ba869b01b9e142ab7f58f89b",
   "role": "admin",
-  "bio": "",
+  "bio": "site admini mecburi",
   "avatar": "",
   "website": "https://onii-sama-blog.github.io/",
   "createdAt": 1795314632928,
