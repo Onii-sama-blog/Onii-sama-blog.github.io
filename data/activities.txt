@@ -1,0 +1,14 @@
+[
+  {
+    "id": "944edb4e-37da-4347-953d-00ba16120331",
+    "type": "post_create",
+    "actorId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
+    "actorName": "Kob09",
+    "actorRole": "admin",
+    "targetUserId": null,
+    "postId": "f0d9eb94-4d7a-49a7-99e6-1b5656719725",
+    "postTitle": "Hxııcg",
+    "summary": "\"Hxııcg\" başlıklı yeni bir yazı paylaştı.",
+    "createdAt": 1795344513181
+  }
+]
