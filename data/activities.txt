@@ -1,5 +1,17 @@
 [
   {
+    "id": "5027573e-5333-4a40-bbcf-52dc90723d58",
+    "type": "user_update",
+    "actorId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
+    "actorName": "Kob09",
+    "actorRole": "admin",
+    "targetUserId": "31501c30-1227-43dd-be14-00cdefd87bec",
+    "postId": null,
+    "postTitle": "",
+    "summary": "\"Takip12\" kullanıcısını güncelledi (Rol: editor).",
+    "createdAt": 1795346474037
+  },
+  {
     "id": "d6060384-9f99-4edb-99b7-8dfc9b885bff",
     "type": "user_update",
     "actorId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
