@@ -1,5 +1,6 @@
 {
   "title": "Onii-sama blog",
   "description": "Onii-sama'nın Blog Krallığı",
-  "footer": ""
+  "footer": "",
+  "proxyUrl": "https://onii-blog-api.tm4349776.workers.dev"
 }
