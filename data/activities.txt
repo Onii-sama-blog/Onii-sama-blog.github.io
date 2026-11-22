@@ -1,14 +1,14 @@
 [
   {
-    "id": "944edb4e-37da-4347-953d-00ba16120331",
-    "type": "post_create",
+    "id": "31ad0d3b-f965-41dc-8aa0-33c4725336bf",
+    "type": "user_create",
     "actorId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
     "actorName": "Kob09",
     "actorRole": "admin",
-    "targetUserId": null,
-    "postId": "f0d9eb94-4d7a-49a7-99e6-1b5656719725",
-    "postTitle": "Hxııcg",
-    "summary": "\"Hxııcg\" başlıklı yeni bir yazı paylaştı.",
-    "createdAt": 1795344513181
+    "targetUserId": "31501c30-1227-43dd-be14-00cdefd87bec",
+    "postId": null,
+    "postTitle": "",
+    "summary": "\"Takip12\" kullanıcısını oluşturdu (Rol: editor).",
+    "createdAt": 1795345392770
   }
 ]
