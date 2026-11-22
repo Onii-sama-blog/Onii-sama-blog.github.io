@@ -43,8 +43,14 @@ label { display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--fg
 .header-actions { display: flex; align-items: center; gap: 0.5rem; }
 .logo { font-size: 1.4rem; font-weight: 800; color: var(--accent); letter-spacing: -0.02em; white-space: nowrap; }
 .nav { display: flex; align-items: center; gap: 0.5rem; }
-.nav a { padding: 0.5rem 0.9rem; border-radius: var(--radius-sm); color: var(--muted); font-weight: 500; transition: all var(--transition); }
-.nav a:hover, .nav a.active { color: var(--fg); background: var(--accent-dim); text-decoration: none; }
+.nav a { position: relative; padding: 0.5rem 0.9rem; border-radius: var(--radius-sm); color: var(--muted); font-weight: 500; transition: color 0.2s ease, background 0.2s ease, transform 0.15s ease; }
+.nav a::after { content: ''; position: absolute; left: 0.9rem; right: 0.9rem; bottom: 4px; height: 2px; border-radius: 2px; background: var(--accent); transform: scaleX(0); transform-origin: center; transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.nav a:hover { color: var(--fg); background: var(--accent-dim); text-decoration: none; }
+.nav a:active { transform: scale(0.96); }
+.nav a.active { color: var(--accent); background: var(--accent-dim); font-weight: 600; text-decoration: none; }
+.nav a.active::after { transform: scaleX(1); }
+@keyframes pageEnter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.page-enter { animation: pageEnter 0.24s cubic-bezier(0.22, 1, 0.36, 1); }
 .icon-btn { width: 40px; height: 40px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-elevated); color: var(--fg); display: inline-flex; align-items: center; justify-content: center; font-size: 1.15rem; transition: all var(--transition); }
 .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
 .mobile-menu-btn { display: none; }
@@ -340,23 +346,30 @@ async function ghDeleteFile(path, message, sha) {
   return ghFetch(`/${path}`, { method: 'DELETE', body: JSON.stringify({ message, sha, branch: GH_BRANCH }) });
 }
 
+async function ghReadJson(path, fallback = null) {
+  try {
+    const file = await ghGetFile(path);
+    if(file && file.content !== undefined && typeof file.content !== 'string') return file.content;
+  } catch(e) {}
+  try {
+    const r = await fetch(`${GH_RAW}/${path}?t=${Date.now()}`, { cache: 'no-store' });
+    if(r.ok) return await r.json();
+  } catch(e) {}
+  return fallback;
+}
+
 async function loadFromGitHub() {
   try {
-    const bust = `?t=${Date.now()}`;
     const [postsFiles, usersFiles, commentsRaw, categoriesRaw, settingsRaw] = await Promise.all([
       ghListDir('data/posts'),
       ghListDir('data/users'),
-      fetch(`${GH_RAW}/data/comments.txt${bust}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(`${GH_RAW}/data/categories.txt${bust}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(`${GH_RAW}/data/settings.txt${bust}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null)
+      ghReadJson('data/comments.txt', null),
+      ghReadJson('data/categories.txt', null),
+      ghReadJson('data/settings.txt', null)
     ]);
 
-    const posts = await Promise.all(postsFiles.map(f =>
-      fetch(`${GH_RAW}/data/posts/${f}${bust}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null)
-    ));
-    const users = await Promise.all(usersFiles.map(f =>
-      fetch(`${GH_RAW}/data/users/${f}${bust}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null)
-    ));
+    const posts = await Promise.all(postsFiles.map(f => ghReadJson(`data/posts/${f}`, null)));
+    const users = await Promise.all(usersFiles.map(f => ghReadJson(`data/users/${f}`, null)));
 
     const validPosts = posts.filter(Boolean);
     const validUsers = users.filter(Boolean);
@@ -533,12 +546,30 @@ window.addEventListener('load', async () => {
 });
 
 /* ==================== RENDER ==================== */
+function updateActiveNav(path) {
+  const norm = path === '' ? '/' : path;
+  $$('#nav a[data-nav]').forEach(a => {
+    const href = (a.getAttribute('href') || '').replace(/^#/, '');
+    const match =
+      (href === '/' && norm === '/') ||
+      (href === '/posts' && (norm === '/posts' || norm === '/post')) ||
+      (href === '/categories' && (norm === '/categories' || norm === '/category')) ||
+      (href === '/authors' && (norm === '/authors' || norm === '/author')) ||
+      (href !== '/' && href === norm);
+    a.classList.toggle('active', match);
+  });
+}
 function renderRoute(route) {
   currentRoute = route;
   const app = $('#app');
   const [path, query] = route.split('?');
   const params = new URLSearchParams(query || '');
+  updateActiveNav(path);
   app.innerHTML = '';
+  app.classList.remove('page-enter');
+  void app.offsetWidth;
+  app.classList.add('page-enter');
+  window.scrollTo({ top: 0, behavior: 'instant' });
 
   if(path === '/setup') return renderSetup(app);
   if(path === '/login') return renderLogin(app);
@@ -692,7 +723,7 @@ function renderAuthor(app, id) {
     <h2 class="section-title">Yazıları</h2>
     <div class="post-grid" id="author-posts"></div>
   `));
-  const grid = $('#author-posts');
+  const grid = $('#author-posts', section);
   posts.forEach(p => grid.append(createPostCard(p)));
   if(!posts.length) grid.append(el('p', {style:'grid-column:1/-1;text-align:center;color:var(--muted)'}, 'Bu kullanıcı henüz yazı yayınlamamış.'));
   app.append(section);
@@ -844,7 +875,7 @@ function renderProfile(app) {
         <hr style="border-color:var(--border);margin:1.5rem 0">
         <div class="form-group"><label>Yeni Şifre (boş bırak = değişmez)</label><input name="newpass" type="password" autocomplete="new-password"></div>
         <div class="form-group"><label>Şifre Tekrar</label><input name="confirmpass" type="password" autocomplete="new-password"></div>
-        <button type="submit" class="btn btn-primary">Kaydet</button>
+        <button type="submit" class="btn btn-primary" id="profile-save-btn">Kaydet</button>
       </form>
     `;
     const fileInput = $('#avatar-file-input');
@@ -863,6 +894,7 @@ function renderProfile(app) {
         pendingAvatar = await resizeAvatar(file);
         preview.innerHTML = `<img src="${pendingAvatar}" alt="">`;
         removeBtn.classList.remove('hidden');
+        toast('Fotoğraf seçildi — kaydetmek için "Kaydet" butonuna basın', 'warning');
       } catch(err) {
         toast('Fotoğraf işlenemedi: ' + err.message, 'error');
       }
@@ -875,21 +907,21 @@ function renderProfile(app) {
     });
     $('#profile-edit-form').addEventListener('submit', async e => {
       e.preventDefault();
+      const saveBtn = $('#profile-save-btn');
       const fd = new FormData(e.target);
       const bio = fd.get('bio'), website = (fd.get('website') || '').trim();
       const newpass = fd.get('newpass'), confirmpass = fd.get('confirmpass');
       const userIdx = state.users.findIndex(x => x.id === u.id);
       if(userIdx >= 0) {
+        if(newpass && newpass !== confirmpass) return toast('Şifreler eşleşmiyor', 'error');
+        if(saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Kaydediliyor...'; }
         state.users[userIdx].bio = bio;
         state.users[userIdx].website = website;
         const prevHist = Array.isArray(state.users[userIdx].websiteHistory) ? state.users[userIdx].websiteHistory : [];
         if(website && !prevHist.includes(website) && website !== SITE_URL) prevHist.unshift(website);
         state.users[userIdx].websiteHistory = prevHist.slice(0, 15);
         state.users[userIdx].avatar = pendingAvatar;
-        if(newpass) {
-          if(newpass !== confirmpass) return toast('Şifreler eşleşmiyor', 'error');
-          state.users[userIdx].passwordHash = await hashPass(newpass);
-        }
+        if(newpass) state.users[userIdx].passwordHash = await hashPass(newpass);
         state.currentUser = {...state.users[userIdx], passwordHash:undefined};
         saveState();
         const headerAv = $('#profile-header-avatar');
@@ -899,9 +931,15 @@ function renderProfile(app) {
         const headerWeb = $('#profile-header-website');
         if(headerWeb) headerWeb.innerHTML = formatWebsiteLink(website);
         if(getGhToken()) {
-          try { await saveUserToGitHub(state.users[userIdx]); } catch(err) { toast('GitHub kaydetme hatası: ' + err.message, 'error'); }
+          try {
+            await saveUserToGitHub(state.users[userIdx]);
+            toast('Profil ve fotoğraf GitHub\'a kaydedildi!');
+          } catch(err) {
+            toast('GitHub kaydetme hatası: ' + err.message, 'error');
+          }
+        } else {
+          toast('Yerel kaydedildi (GitHub\'a yazmak için Admin → Depolama\'dan token girin)', 'warning');
         }
-        toast('Profil güncellendi');
         renderEdit();
       }
     });
@@ -1056,20 +1094,26 @@ function renderPostEditor(main, id) {
   }
 }
 async function savePost() {
+  const btn = $('#save-post');
   const title = $('#post-title').value.trim();
   const content = $('#post-content').value;
   const category = $('#post-category').value;
   const status = $('#post-status').value;
   const tags = $('#post-tags').value.split(',').map(t=>t.trim()).filter(Boolean);
   if(!title || !content) return toast('Başlık ve içerik zorunlu', 'error');
+  if(btn) { btn.disabled = true; btn.textContent = 'Kaydediliyor...'; }
   const now = Date.now();
   const post = editingPostId ? getPost(editingPostId) : { id:uid(), authorId:state.currentUser.id, createdAt:now };
   if(post) {
     post.title = title; post.content = content; post.category = category; post.status = status; post.tags = tags; post.coverImage = uploadImageBase64; post.updatedAt = now;
     if(!editingPostId) state.posts.unshift(post);
-    saveState(); 
-    try { await savePostToGitHub(post); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); }
-    toast(editingPostId ? 'Yazı güncellendi' : 'Yazı oluşturuldu', 'success');
+    saveState();
+    try {
+      await savePostToGitHub(post);
+      toast(editingPostId ? 'Yazı GitHub\'a kaydedildi!' : 'Yazı yayınlandı ve GitHub\'a kaydedildi!', 'success');
+    } catch(e) {
+      toast('GitHub kaydetme hatası: ' + e.message, 'error');
+    }
     navigate('#/admin?tab=posts');
   }
 }
