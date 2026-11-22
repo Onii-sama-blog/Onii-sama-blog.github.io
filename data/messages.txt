@@ -14,5 +14,13 @@
     "text": "o içeriği kaldırsan olur",
     "createdAt": 1795348383128,
     "read": false
+  },
+  {
+    "id": "6351cc90-996a-4275-ba20-765c3304ed12",
+    "fromId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
+    "toId": "31501c30-1227-43dd-be14-00cdefd87bec",
+    "text": "Ban kaldırma onay kodun: ONII-HG95-8T8G",
+    "createdAt": 1795348393463,
+    "read": false
   }
 ]
