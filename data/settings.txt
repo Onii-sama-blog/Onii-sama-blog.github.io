@@ -1,0 +1,5 @@
+{
+  "title": "Onii-sama blog",
+  "description": "Onii-sama'nın Blog Krallığı",
+  "footer": ""
+}
