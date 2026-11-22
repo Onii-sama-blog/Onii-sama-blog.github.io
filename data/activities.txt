@@ -1,5 +1,17 @@
 [
   {
+    "id": "8cf66732-236c-44ec-9026-3cb4f98b2ea4",
+    "type": "post_edit",
+    "actorId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
+    "actorName": "Kob09",
+    "actorRole": "admin",
+    "targetUserId": null,
+    "postId": "f0d9eb94-4d7a-49a7-99e6-1b5656719725",
+    "postTitle": "Hxııcg",
+    "summary": "\"Hxııcg\" başlıklı yazıyı düzenledi.",
+    "createdAt": 1795375057962
+  },
+  {
     "id": "afd0c8a0-c8bd-4bab-852d-19140fa6ff90",
     "type": "post_edit",
     "actorId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
