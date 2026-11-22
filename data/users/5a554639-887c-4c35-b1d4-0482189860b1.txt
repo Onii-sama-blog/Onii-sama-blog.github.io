@@ -1,0 +1,10 @@
+{
+  "id": "5a554639-887c-4c35-b1d4-0482189860b1",
+  "username": "Dml35",
+  "passwordHash": "0ddbb62cfb040755f22486e32a448ad203bff5f8ca07b1e0f3f3df1f0361aec9",
+  "role": "author",
+  "bio": "",
+  "avatar": "",
+  "website": "",
+  "createdAt": 1795314793585
+}
