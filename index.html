@@ -281,6 +281,18 @@ code { word-break: break-all; }
   .toast { min-width: 0; max-width: 100%; width: 100%; }
   .post-pager { flex-direction: column; align-items: stretch; }
   .post-pager .btn { width: 100%; }
+  table.mobile-cards thead { display: none; }
+  table.mobile-cards, table.mobile-cards tbody, table.mobile-cards tr, table.mobile-cards td { display: block; width: 100%; }
+  table.mobile-cards tr { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.85rem; margin-bottom: 0.75rem; }
+  table.mobile-cards tr:last-child { margin-bottom: 0; }
+  table.mobile-cards tr:hover td { background: transparent; }
+  table.mobile-cards td { border-bottom: none; padding: 0.25rem 0; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; font-size: 0.86rem; }
+  table.mobile-cards td::before { content: attr(data-label); color: var(--muted); font-size: 0.76rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; flex-shrink: 0; }
+  table.mobile-cards td[data-label=""]::before { display: none; }
+  table.mobile-cards td.mc-title { display: block; font-size: 1rem; font-weight: 700; padding-bottom: 0.5rem; margin-bottom: 0.35rem; border-bottom: 1px solid var(--border); }
+  table.mobile-cards td.mc-title::before { display: none; }
+  table.mobile-cards td.mc-actions { padding-top: 0.6rem; margin-top: 0.35rem; border-top: 1px dashed var(--border); justify-content: flex-end; }
+  table.mobile-cards td.mc-actions::before { display: none; }
 }
 </style>
 </head>
@@ -1476,8 +1488,8 @@ function renderDashboard(main) {
         : '<p style="color:var(--muted)">Henüz kayıtlı hareket yok.</p>'}
     </div>
     <div class="card"><h3 style="margin-bottom:1rem">Son Yazılar</h3>
-      <div class="table-wrap"><table><thead><tr><th>Başlık</th><th>Yazar</th><th>Durum</th><th>Kategori</th><th>Tarih</th><th></th></tr></thead><tbody>
-        ${state.posts.slice().sort((a,b)=>b.createdAt-a.createdAt).slice(0,10).map(p=>`<tr><td>${esc(p.title)} ${p._unsynced?'<span class="badge badge-pending">Yerel</span>':''}</td><td>${esc(getUser(p.authorId)?.username||'?')}</td><td><span class="badge ${p.status==='published'?'badge-published':'badge-draft'}">${p.status==='published'?'Yayınlandı':'Taslak'}</span></td><td>${esc(p.category)}</td><td>${fmtDate(p.createdAt)}</td><td><a href="#/admin?edit=${p.id}" class="btn btn-secondary action-btn">Düzenle</a></td></tr>`).join('')}
+      <div class="table-wrap"><table class="mobile-cards"><thead><tr><th>Başlık</th><th>Yazar</th><th>Durum</th><th>Kategori</th><th>Tarih</th><th></th></tr></thead><tbody>
+        ${state.posts.slice().sort((a,b)=>b.createdAt-a.createdAt).slice(0,10).map(p=>`<tr><td class="mc-title"><a href="#/post?id=${p.id}" style="color:inherit">${esc(p.title)}</a> ${p._unsynced?'<span class="badge badge-pending">Yerel</span>':''}</td><td data-label="Yazar">${esc(getUser(p.authorId)?.username||'?')}</td><td data-label="Durum"><span class="badge ${p.status==='published'?'badge-published':'badge-draft'}">${p.status==='published'?'Yayınlandı':'Taslak'}</span></td><td data-label="Kategori">${esc(p.category)}</td><td data-label="Tarih">${fmtDate(p.createdAt)}</td><td class="mc-actions"><a href="#/admin?edit=${p.id}" class="btn btn-secondary action-btn">Düzenle</a></td></tr>`).join('')}
       </tbody></table></div>
       ${!state.posts.length ? '<p style="text-align:center;color:var(--muted);padding:1.5rem">Henüz yazı yok.</p>' : ''}
     </div>
@@ -1582,21 +1594,21 @@ function renderMyPosts(main) {
       </div>
     ` : ''}
     <div class="card">
-      <div class="table-wrap"><table><thead><tr><th>Başlık</th>${scope==='all'?'<th>Yazar</th>':''}<th>Kategori</th><th>Durum</th><th>Tarih</th><th></th></tr></thead><tbody>
+      <div class="table-wrap"><table class="mobile-cards"><thead><tr><th>Başlık</th>${scope==='all'?'<th>Yazar</th>':''}<th>Kategori</th><th>Durum</th><th>Tarih</th><th></th></tr></thead><tbody>
         ${visiblePosts.map(p=>`
           <tr>
-            <td><a href="#/post?id=${p.id}" style="color:inherit;font-weight:600">${esc(p.title)}</a> ${p._unsynced?'<span class="badge badge-pending">Yerel</span>':''}</td>
-            ${scope==='all'?`<td>${esc(getUser(p.authorId)?.username||'?')}</td>`:''}
-            <td>${esc(p.category)}</td>
-            <td><span class="badge ${p.status==='published'?'badge-published':'badge-draft'}">${p.status==='published'?'Yayınlandı':'Taslak'}</span></td>
-            <td>${fmtDate(p.createdAt)}</td>
-            <td class="action-btns">
+            <td class="mc-title"><a href="#/post?id=${p.id}" style="color:inherit;font-weight:600">${esc(p.title)}</a> ${p._unsynced?'<span class="badge badge-pending">Yerel</span>':''}</td>
+            ${scope==='all'?`<td data-label="Yazar">${esc(getUser(p.authorId)?.username||'?')}</td>`:''}
+            <td data-label="Kategori">${esc(p.category)}</td>
+            <td data-label="Durum"><span class="badge ${p.status==='published'?'badge-published':'badge-draft'}">${p.status==='published'?'Yayınlandı':'Taslak'}</span></td>
+            <td data-label="Tarih">${fmtDate(p.createdAt)}</td>
+            <td class="action-btns mc-actions">
               <a href="${base}?edit=${p.id}" class="btn btn-secondary action-btn">Düzenle</a>
               <button class="btn btn-danger action-btn" onclick="deletePost('${p.id}')">Sil</button>
             </td>
           </tr>`).join('')}
       </tbody></table></div>
-      ${!visiblePosts.length ? '<p style="text-align:center;color:var(--muted);padding:2rem">Henüz yazın yok. "Yeni Yazı" butonuna veya Anasayfa\'daki paylaşım kutusuna tıklayıp ilk yazını oluşturabilirsin.</p>' : ''}
+      ${!visiblePosts.length ? '<p style="text-align:center;color:var(--muted);padding:2rem">Henüz yazın yok. "Yeni Yazı" butonuna tıklayıp ilk yazını oluşturabilirsin.</p>' : ''}
     </div>
   `;
 }
@@ -1979,16 +1991,16 @@ function renderCategoriesAdmin(main) {
 function renderUsersAdmin(main) {
   main.innerHTML = `
     <div class="admin-header"><h1>Kullanıcılar</h1><button class="btn btn-primary" onclick="openUserModal()">Yeni Kullanıcı</button></div>
-    <div class="card"><div class="table-wrap"><table><thead><tr><th>Kullanıcı</th><th>Rol</th><th>Yazılar</th><th>Kayıt</th><th></th></tr></thead><tbody>
-      ${state.users.map(u=>`<tr><td>${esc(u.username)}</td><td>${roleBadge(u.role)}</td><td>${getUserPosts(u.id).length}</td><td>${fmtDate(u.createdAt)}</td><td><button class="action-btn btn btn-secondary" onclick="openUserModal('${u.id}')">Düzenle</button>${u.id!==state.currentUser.id?` <button class="action-btn btn btn-danger" onclick="deleteUser('${u.id}')">Sil</button>`:''}</td></tr>`).join('')}
+    <div class="card"><div class="table-wrap"><table class="mobile-cards"><thead><tr><th>Kullanıcı</th><th>Rol</th><th>Yazılar</th><th>Kayıt</th><th></th></tr></thead><tbody>
+      ${state.users.map(u=>`<tr><td class="mc-title">${esc(u.username)}</td><td data-label="Rol">${roleBadge(u.role)}</td><td data-label="Yazılar">${getUserPosts(u.id).length}</td><td data-label="Kayıt">${fmtDate(u.createdAt)}</td><td class="action-btns mc-actions"><button class="action-btn btn btn-secondary" onclick="openUserModal('${u.id}')">Düzenle</button>${u.id!==state.currentUser.id?` <button class="action-btn btn btn-danger" onclick="deleteUser('${u.id}')">Sil</button>`:''}</td></tr>`).join('')}
     </tbody></table></div></div>
   `;
 }
 function renderCommentsAdmin(main) {
   main.innerHTML = `
     <div class="admin-header"><h1>Yorumlar</h1></div>
-    <div class="card"><div class="table-wrap"><table><thead><tr><th>Yazar</th><th>Yazı</th><th>İçerik</th><th>Tarih</th><th></th></tr></thead><tbody>
-      ${state.comments.map(c=>{const u=getUser(c.userId); const p=getPost(c.postId); return `<tr><td>${esc(u?.username||'Silinmiş')}</td><td>${esc(p?.title||'Silinmiş')}</td><td>${esc(c.content.slice(0,80))}…</td><td>${fmtDateTime(c.createdAt)}</td><td><button class="action-btn btn btn-danger" onclick="deleteComment('${c.id}')">Sil</button></td></tr>`}).join('')}
+    <div class="card"><div class="table-wrap"><table class="mobile-cards"><thead><tr><th>Yazar</th><th>Yazı</th><th>İçerik</th><th>Tarih</th><th></th></tr></thead><tbody>
+      ${state.comments.map(c=>{const u=getUser(c.userId); const p=getPost(c.postId); return `<tr><td class="mc-title">${esc(u?.username||'Silinmiş')}</td><td data-label="Yazı">${esc(p?.title||'Silinmiş')}</td><td data-label="İçerik">${esc(c.content.slice(0,80))}…</td><td data-label="Tarih">${fmtDateTime(c.createdAt)}</td><td class="mc-actions"><button class="action-btn btn btn-danger" onclick="deleteComment('${c.id}')">Sil</button></td></tr>`}).join('')}
     </tbody></table></div>${!state.comments.length?'<p style="text-align:center;color:var(--muted);padding:2rem">Yorum yok</p>':''}</div>
   `;
 }
