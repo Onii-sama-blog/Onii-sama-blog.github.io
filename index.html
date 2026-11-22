@@ -294,6 +294,30 @@ code { word-break: break-all; }
   table.mobile-cards td.mc-actions { padding-top: 0.6rem; margin-top: 0.35rem; border-top: 1px dashed var(--border); justify-content: flex-end; }
   table.mobile-cards td.mc-actions::before { display: none; }
 }
+/* Facebook-tarzı Site İçi DM Sohbet Widget */
+.chat-fab { position: fixed; right: 1.25rem; bottom: 1.25rem; width: 56px; height: 56px; border-radius: 50%; background: var(--accent); color: #000; font-size: 1.45rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 28px rgba(0,0,0,0.35); z-index: 900; transition: transform 0.2s ease, filter 0.2s ease; }
+.chat-fab:hover { transform: scale(1.06); filter: brightness(1.08); }
+.chat-fab-badge { position: absolute; top: -4px; right: -4px; min-width: 21px; height: 21px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 0.72rem; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 2px solid var(--bg); }
+.chat-dock { position: fixed; right: 1.25rem; bottom: 5.25rem; width: 350px; max-width: calc(100vw - 1.5rem); height: 470px; max-height: calc(100vh - 7rem); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 16px 48px rgba(0,0,0,0.42); z-index: 910; display: flex; flex-direction: column; overflow: hidden; animation: slideUp 0.2s ease; }
+.chat-dock-header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.75rem 0.9rem; background: var(--bg-elevated); border-bottom: 1px solid var(--border); }
+.chat-dock-title { display: flex; align-items: center; gap: 0.55rem; min-width: 0; font-weight: 700; font-size: 0.95rem; }
+.chat-dock-body { flex: 1; overflow-y: auto; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.chat-user-row { display: flex; align-items: center; gap: 0.7rem; padding: 0.65rem 0.7rem; border-radius: var(--radius-sm); border: 1px solid transparent; background: var(--bg-elevated); cursor: pointer; text-align: left; width: 100%; transition: all var(--transition); }
+.chat-user-row:hover { border-color: var(--accent); background: var(--accent-dim); }
+.chat-user-info { flex: 1; min-width: 0; }
+.chat-user-preview { font-size: 0.78rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 0.1rem; }
+.chat-msg { max-width: 82%; padding: 0.55rem 0.8rem; border-radius: 14px; font-size: 0.88rem; line-height: 1.45; word-break: break-word; }
+.chat-msg.me { align-self: flex-end; background: var(--accent); color: #000; border-bottom-right-radius: 4px; }
+.chat-msg.them { align-self: flex-start; background: var(--bg-elevated); color: var(--fg); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.chat-msg-time { font-size: 0.68rem; opacity: 0.72; margin-top: 0.2rem; display: block; text-align: right; }
+.chat-dock-quick { padding: 0.45rem 0.75rem; border-top: 1px dashed var(--border); background: var(--bg-elevated); display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.chat-dock-form { display: flex; gap: 0.45rem; padding: 0.65rem 0.75rem; border-top: 1px solid var(--border); background: var(--bg-elevated); }
+.chat-dock-form input { padding: 0.55rem 0.75rem; font-size: 0.9rem; }
+.chat-dock-form button { padding: 0.55rem 0.95rem; font-size: 0.88rem; flex-shrink: 0; }
+@media (max-width: 600px) {
+  .chat-fab { right: 0.9rem; bottom: 0.9rem; width: 52px; height: 52px; }
+  .chat-dock { right: 0.75rem; left: 0.75rem; bottom: 4.75rem; width: auto; max-width: none; height: 70vh; }
+}
 </style>
 </head>
 <body>
@@ -319,12 +343,13 @@ code { word-break: break-all; }
 </header>
 <main class="main" id="app"></main>
 <footer class="footer"><div class="container" id="site-footer">Onii-sama blog</div></footer>
+<div id="chat-root"></div>
 <div class="toast-container" id="toast-container"></div>
 <script>
 /* ==================== STATE & CONFIG ==================== */
 const STORAGE_KEY = 'blog_data_v1';
 let state = {
-  posts: [], users: [], comments: [], activities: [], editRequests: [],
+  posts: [], users: [], comments: [], activities: [], editRequests: [], messages: [],
   categories: ['Genel', 'Teknoloji', 'Yaşam', 'Ödev'],
   settings: { title: 'Onii-sama blog', description: 'Onii-sama blog - Kardeşim için', footer: '', social: {}, proxyUrl: 'https://onii-blog-api.tm4349776.workers.dev' },
   currentUser: null
@@ -394,6 +419,7 @@ const setNav = () => {
   $('#nav-profile')?.classList.toggle('hidden', !u);
   $('#logout-btn')?.classList.toggle('hidden', !u);
   applySiteMeta();
+  if(typeof renderChatWidget === 'function') renderChatWidget();
 };
 const saveState = () => {
   try {
@@ -407,6 +433,7 @@ const loadState = () => {
     if(s) state = {...state, ...JSON.parse(s)};
     if(!Array.isArray(state.activities)) state.activities = [];
     if(!Array.isArray(state.editRequests)) state.editRequests = [];
+    if(!Array.isArray(state.messages)) state.messages = [];
     if(!Array.isArray(state.categories) || !state.categories.length) state.categories = [...DEFAULT_CATEGORIES];
     if(!state.settings) state.settings = {};
     if(!state.settings.proxyUrl) state.settings.proxyUrl = 'https://onii-blog-api.tm4349776.workers.dev';
@@ -537,14 +564,15 @@ async function ghReadJson(path, fallback = null) {
 
 async function loadFromGitHub() {
   try {
-    const [postsFiles, usersFiles, commentsRaw, categoriesRaw, settingsRaw, activitiesRaw, editRequestsRaw] = await Promise.all([
+    const [postsFiles, usersFiles, commentsRaw, categoriesRaw, settingsRaw, activitiesRaw, editRequestsRaw, messagesRaw] = await Promise.all([
       ghListDir('data/posts'),
       ghListDir('data/users'),
       ghReadJson('data/comments.txt', null),
       ghReadJson('data/categories.txt', null),
       ghReadJson('data/settings.txt', null),
       ghReadJson('data/activities.txt', null),
-      ghReadJson('data/edit_requests.txt', null)
+      ghReadJson('data/edit_requests.txt', null),
+      ghReadJson('data/messages.txt', null)
     ]);
 
     const posts = await Promise.all(postsFiles.map(f => ghReadJson(`data/posts/${f}`, null)));
@@ -565,6 +593,7 @@ async function loadFromGitHub() {
       if(settingsRaw) state.settings = { ...state.settings, ...settingsRaw, proxyUrl: settingsRaw.proxyUrl || state.settings.proxyUrl || 'https://onii-blog-api.tm4349776.workers.dev' };
       if(Array.isArray(activitiesRaw)) state.activities = activitiesRaw;
       if(Array.isArray(editRequestsRaw)) state.editRequests = editRequestsRaw;
+      if(Array.isArray(messagesRaw)) state.messages = messagesRaw;
       saveState();
     }
     return true;
@@ -612,6 +641,11 @@ async function saveActivitiesToGitHub() {
 async function saveEditRequestsToGitHub() {
   if(!hasWriteAccess()) throw new Error('Yazma bağlantısı yok (Yönetici → Depolama / Token ayarlamalı)');
   return ghPutFile('data/edit_requests.txt', state.editRequests, 'Update edit requests');
+}
+
+async function saveMessagesToGitHub() {
+  if(!hasWriteAccess()) throw new Error('Yazma bağlantısı aktif değil');
+  return ghPutFile('data/messages.txt', (state.messages || []).slice(-400), 'Update messages');
 }
 
 async function logActivity(type, { summary, postId = null, postTitle = '', targetUserId = null } = {}) {
@@ -694,6 +728,7 @@ async function initGitHubRepo() {
     await ghPutFile('data/comments.txt', state.comments, 'Init/sync comments');
     await ghPutFile('data/activities.txt', state.activities || [], 'Init/sync activities');
     await ghPutFile('data/edit_requests.txt', state.editRequests || [], 'Init/sync edit requests');
+    await ghPutFile('data/messages.txt', state.messages || [], 'Init/sync messages');
     await ghPutFile('data/posts/.gitkeep', '', 'Init posts dir');
     await ghPutFile('data/users/.gitkeep', '', 'Init users dir');
     for(const u of state.users) {
@@ -719,8 +754,22 @@ async function initGitHubRepo() {
 const getPost = (id) => state.posts.find(p => p.id === id);
 const getUser = (id) => state.users.find(u => u.id === id);
 const getCommentsForPost = (postId) => state.comments.filter(c => c.postId === postId);
-const getPostsByCategory = (cat) => cat ? state.posts.filter(p => p.category === cat && p.status === 'published') : state.posts.filter(p => p.status === 'published');
-const getPublishedPosts = () => state.posts.filter(p => p.status === 'published').sort((a,b)=>b.createdAt - a.createdAt);
+const isUserBanned = (userId) => !!getUser(userId)?.banned;
+const canViewPost = (post, viewer = state.currentUser) => {
+  if(!post) return false;
+  if(post.status !== 'published') return !!(viewer && (viewer.role === 'admin' || viewer.id === post.authorId));
+  if(isUserBanned(post.authorId)) return !!(viewer && (viewer.role === 'admin' || viewer.id === post.authorId));
+  return true;
+};
+const generateUnlockCode = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const arr = new Uint8Array(8);
+  crypto.getRandomValues(arr);
+  const s = Array.from(arr, b => chars[b % chars.length]).join('');
+  return `ONII-${s.slice(0, 4)}-${s.slice(4, 8)}`;
+};
+const getPostsByCategory = (cat) => (cat ? state.posts.filter(p => p.category === cat && p.status === 'published') : state.posts.filter(p => p.status === 'published')).filter(p => canViewPost(p));
+const getPublishedPosts = () => state.posts.filter(p => p.status === 'published' && canViewPost(p)).sort((a,b)=>b.createdAt - a.createdAt);
 const getUserPosts = (userId) => state.posts.filter(p => p.authorId === userId).sort((a,b)=>b.createdAt - a.createdAt);
 const SITE_URL = 'https://onii-sama-blog.github.io/';
 const formatWebsiteLink = (url) => {
@@ -879,6 +928,27 @@ function buildUnsyncedBanner() {
   `);
 }
 
+function buildBannedBanner() {
+  const u = state.currentUser ? getUser(state.currentUser.id) : null;
+  if(!u || !u.banned) return null;
+  return html(`
+    <div class="sync-banner" style="border-color:var(--danger);background:#ff475718">
+      <div style="flex:1;min-width:220px">
+        <strong style="color:var(--danger)">🚫 Hesabın Kısıtlandı (Banlı)</strong>
+        <p style="font-size:0.86rem;color:var(--muted);margin-top:0.2rem">
+          Tüm yazıların ve yeni paylaşacağın yazılar şimdilik <strong>sadece sana</strong> görünür.
+          ${u.banReason ? `<br>Sebep: <em>${esc(u.banReason)}</em>` : ''}
+        </p>
+      </div>
+      <form onsubmit="event.preventDefault(); submitUnlockCode(this.querySelector('input').value)" style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
+        <input placeholder="Onay / Ban açma kodu..." required style="width:190px;padding:0.55rem 0.8rem;font-size:0.9rem" autocomplete="off">
+        <button type="submit" class="btn btn-primary" style="padding:0.55rem 1rem;font-size:0.9rem">🔑 Banı Kaldır</button>
+        <button type="button" class="btn btn-secondary" onclick="openChatWithAdmin()" style="padding:0.55rem 0.9rem;font-size:0.9rem">💬 Yöneticiye Mesaj At</button>
+      </form>
+    </div>
+  `);
+}
+
 /* ==================== PAGES ==================== */
 function renderHome(app) {
   const published = getPublishedPosts();
@@ -887,6 +957,8 @@ function renderHome(app) {
   app.innerHTML = '';
   const section = el('div', {class:'container'});
 
+  const banBanner = buildBannedBanner();
+  if(banBanner) section.append(banBanner);
   const banner = buildUnsyncedBanner();
   if(banner) section.append(banner);
 
@@ -962,7 +1034,7 @@ function flipToPost(targetId, direction = 'next') {
 
 function renderPost(app, id) {
   const post = getPost(id);
-  if(!post || post.status !== 'published') { app.innerHTML = '<div class="container" style="text-align:center;padding:3rem"><h2>Yazı bulunamadı</h2><a href="#/" class="btn btn-primary" style="margin-top:1rem">Anasayfa</a></div>'; return; }
+  if(!post || !canViewPost(post)) { app.innerHTML = '<div class="container" style="text-align:center;padding:3rem"><h2>Yazı bulunamadı</h2><a href="#/" class="btn btn-primary" style="margin-top:1rem">Anasayfa</a></div>'; return; }
   const author = getUser(post.authorId);
   const comments = getCommentsForPost(post.id);
   const u = state.currentUser;
@@ -1132,13 +1204,13 @@ function renderCategory(app, name) {
 function renderAuthor(app, id) {
   const author = getUser(id);
   if(!author) { app.innerHTML = '<div class="container" style="text-align:center;padding:3rem"><h2>Kullanıcı bulunamadı</h2><a href="#/authors" class="btn btn-primary" style="margin-top:1rem">Kullanıcılar</a></div>'; return; }
-  const posts = getUserPosts(author.id).filter(p => p.status==='published');
+  const posts = getUserPosts(author.id).filter(p => p.status==='published' && canViewPost(p));
   const section = el('div', {class:'container'});
   section.append(html(`
     <div class="profile-header" style="margin-bottom:2rem">
       <div class="profile-avatar" style="width:100px;height:100px;font-size:2.5rem">${avatarHtml(author)}</div>
       <div>
-        <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap"><h1>${esc(author.username)}</h1>${roleBadge(author.role)}</div>
+        <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap"><h1>${esc(author.username)}</h1>${roleBadge(author.role)}${state.currentUser && state.currentUser.id !== author.id ? `<button class="btn btn-primary" style="padding:0.4rem 0.85rem;font-size:0.85rem" onclick="openChatWith('${author.id}')">💬 Mesaj Gönder</button>` : ''}</div>
         <p class="profile-bio">${esc(author.bio || 'Bio yok')}</p>
         ${formatWebsiteLink(author.website)}
         <p style="color:var(--muted);font-size:0.9rem;margin-top:0.35rem">${posts.length} yazı • ${fmtDate(author.createdAt)} itibarıyla üye</p>
@@ -1156,7 +1228,7 @@ function renderAuthorsList(app) {
   const section = el('div', {class:'container'});
   const grid = el('div', {style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem'});
   state.users.forEach(u => {
-    const count = getUserPosts(u.id).filter(p => p.status==='published').length;
+    const count = getUserPosts(u.id).filter(p => p.status==='published' && canViewPost(p)).length;
     grid.append(html(`<a href="#/author?id=${u.id}" class="card" style="text-align:center;padding:2rem;text-decoration:none"><div class="profile-avatar" style="width:72px;height:72px;font-size:1.75rem;margin:0 auto 1rem">${avatarHtml(u)}</div><h3 style="margin-bottom:0.4rem">${esc(u.username)}</h3><div style="margin-bottom:0.5rem">${roleBadge(u.role)}</div><p style="color:var(--muted);font-size:0.9rem">${count} yazı</p></a>`));
   });
   section.append(grid);
@@ -1167,9 +1239,21 @@ function renderAuthorsList(app) {
 function renderAbout(app) {
   const section = el('div', {class:'container', style:'max-width:700px'});
   section.append(html(`
-    <div class="card">
+    <div class="card" style="margin-bottom:1.25rem">
       <p style="margin-bottom:1rem">${esc(state.settings.description || 'Onii-sama blog — ödev ve yazılar için sade, hızlı ve reklamsız blog platformu.')}</p>
       <p style="color:var(--muted)">Tüm yazılar doğrudan GitHub Pages üzerinden yayınlanır.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:0.5rem">💬 Yardım & Destek (Site İçi Mesajlaşma)</h3>
+      <p style="color:var(--muted);font-size:0.92rem;margin-bottom:1rem">
+        Hesap, yazı, düzenleme isteği veya ban onay kodu hakkında yöneticiye ya da diğer kullanıcılara doğrudan mesaj gönderebilirsin.
+      </p>
+      ${state.currentUser
+        ? `<div style="display:flex;gap:0.6rem;flex-wrap:wrap">
+             <button class="btn btn-primary" onclick="openChatWithAdmin()">💬 Yöneticiye Mesaj Gönder</button>
+             <button class="btn btn-secondary" onclick="toggleChatDock(true)">👥 Tüm Sohbetleri Aç</button>
+           </div>`
+        : `<a href="#/login" class="btn btn-primary">Mesaj göndermek için Giriş Yap</a>`}
     </div>
     <h1 class="section-title section-bottom">Hakkında</h1>
   `));
@@ -1408,13 +1492,16 @@ function renderPanel(app, routePath = '/admin') {
   const editId = params.get('edit');
   const proposeId = params.get('propose');
   let tab = params.get('tab') || (isAdmin ? 'dashboard' : 'myposts');
-  if(!isAdmin && (tab === 'dashboard' || tab === 'posts' || tab === 'categories' || tab === 'users' || tab === 'comments' || tab === 'settings' || tab === 'storage')) {
+  if(!isAdmin && (tab === 'dashboard' || tab === 'posts' || tab === 'categories' || tab === 'users' || tab === 'comments' || tab === 'settings' || tab === 'storage' || tab === 'bans')) {
     tab = 'myposts';
   }
   if(isAdmin && tab === 'posts') tab = 'myposts';
 
   const pendingReqCount = getPendingIncomingRequests(u).length;
   const reqBadge = pendingReqCount ? `<span class="nav-badge">${pendingReqCount}</span>` : '';
+  const bannedCount = isAdmin ? state.users.filter(x => x.banned).length : 0;
+  const banBadge = bannedCount ? `<span class="nav-badge">${bannedCount}</span>` : '';
+  const selfBanned = isUserBanned(u.id);
 
   app.innerHTML = `
     <div class="admin-layout">
@@ -1429,11 +1516,12 @@ function renderPanel(app, routePath = '/admin') {
                <a href="${base}?tab=categories" data-tab="categories">🏷️ Kategoriler</a>
                <a href="${base}?tab=users" data-tab="users">👥 Kullanıcılar</a>
                <a href="${base}?tab=comments" data-tab="comments">💬 Yorumlar</a>
-               <a href="${base}?tab=settings" data-tab="settings">⚙️ Site Ayarları</a>
-               <a href="${base}?tab=storage" data-tab="storage">💾 Depolama / Token</a>`
+               <a href="${base}?tab=bans" data-tab="bans">🛡️ Onay / Ban ${banBadge}</a>
+               <a href="${base}?tab=settings" data-tab="settings">⚙️ Site Ayarları</a>`
             : `<a href="${base}?tab=myposts" data-tab="myposts">✍️ Yazdıklarım</a>
                <a href="${base}?tab=edit-requests" data-tab="edit-requests">✏️ Düzenleme İstekleri ${reqBadge}</a>
-               <a href="${base}?tab=activity" data-tab="activity">📜 Hareketlerim</a>`
+               <a href="${base}?tab=activity" data-tab="activity">📜 Hareketlerim</a>
+               ${selfBanned ? `<a href="${base}?tab=unlock" data-tab="unlock">🔑 Ban Kaldır</a>` : ''}`
           }
         </nav>
       </aside>
@@ -1441,6 +1529,8 @@ function renderPanel(app, routePath = '/admin') {
     </div>
   `;
   const main = $('#admin-main');
+  const banBanner = buildBannedBanner();
+  if(banBanner) main.append(banBanner);
   const syncBanner = buildUnsyncedBanner();
   if(syncBanner) main.append(syncBanner);
   const contentWrap = el('div');
@@ -1458,8 +1548,10 @@ function renderPanel(app, routePath = '/admin') {
     case 'categories': if(isAdmin) renderCategoriesAdmin(contentWrap); break;
     case 'users': if(isAdmin) renderUsersAdmin(contentWrap); break;
     case 'comments': if(isAdmin) renderCommentsAdmin(contentWrap); break;
+    case 'bans': if(isAdmin) renderBansAdmin(contentWrap); else renderMyPosts(contentWrap); break;
+    case 'unlock': renderUnlockBan(contentWrap); break;
     case 'settings': if(isAdmin) renderSettingsAdmin(contentWrap); break;
-    case 'storage': if(isAdmin) renderStorageAdmin(contentWrap); else renderMyPosts(contentWrap); break;
+    case 'storage': if(isAdmin) renderSettingsAdmin(contentWrap); else renderMyPosts(contentWrap); break;
     default: isAdmin ? renderDashboard(contentWrap) : renderMyPosts(contentWrap);
   }
 }
@@ -1500,7 +1592,8 @@ function activityIcon(type) {
   const map = {
     post_create: '📝', post_edit: '✏️', post_delete: '🗑️',
     edit_request_create: '📨', edit_request_approve: '✅', edit_request_reject: '❌',
-    comment_add: '💬', profile_update: '👤', user_create: '🆕', user_update: '🔧', settings_update: '⚙️'
+    comment_add: '💬', profile_update: '👤', user_create: '🆕', user_update: '🔧', settings_update: '⚙️',
+    user_ban: '🚫', ban_unlock: '🔑'
   };
   return map[type] || '📌';
 }
@@ -1991,8 +2084,19 @@ function renderCategoriesAdmin(main) {
 function renderUsersAdmin(main) {
   main.innerHTML = `
     <div class="admin-header"><h1>Kullanıcılar</h1><button class="btn btn-primary" onclick="openUserModal()">Yeni Kullanıcı</button></div>
-    <div class="card"><div class="table-wrap"><table class="mobile-cards"><thead><tr><th>Kullanıcı</th><th>Rol</th><th>Yazılar</th><th>Kayıt</th><th></th></tr></thead><tbody>
-      ${state.users.map(u=>`<tr><td class="mc-title">${esc(u.username)}</td><td data-label="Rol">${roleBadge(u.role)}</td><td data-label="Yazılar">${getUserPosts(u.id).length}</td><td data-label="Kayıt">${fmtDate(u.createdAt)}</td><td class="action-btns mc-actions"><button class="action-btn btn btn-secondary" onclick="openUserModal('${u.id}')">Düzenle</button>${u.id!==state.currentUser.id?` <button class="action-btn btn btn-danger" onclick="deleteUser('${u.id}')">Sil</button>`:''}</td></tr>`).join('')}
+    <div class="card"><div class="table-wrap"><table class="mobile-cards"><thead><tr><th>Kullanıcı</th><th>Rol</th><th>Durum</th><th>Yazılar</th><th>Kayıt</th><th></th></tr></thead><tbody>
+      ${state.users.map(u=>`<tr>
+        <td class="mc-title">${esc(u.username)}</td>
+        <td data-label="Rol">${roleBadge(u.role)}</td>
+        <td data-label="Durum">${u.banned ? '<span class="badge badge-rejected">🚫 Banlı</span>' : (u.flagged ? '<span class="badge badge-pending">⚠️ Mimli</span>' : '<span class="badge badge-published">Aktif</span>')}</td>
+        <td data-label="Yazılar">${getUserPosts(u.id).length}</td>
+        <td data-label="Kayıt">${fmtDate(u.createdAt)}</td>
+        <td class="action-btns mc-actions">
+          <button class="action-btn btn btn-secondary" onclick="openUserModal('${u.id}')">Düzenle</button>
+          ${u.id!==state.currentUser.id && u.role!=='admin' && !u.banned ? `<button class="action-btn btn btn-danger" onclick="banUser('${u.id}')">🚫 Banla</button>` : ''}
+          ${u.id!==state.currentUser.id ? `<button class="action-btn btn btn-danger" onclick="deleteUser('${u.id}')">Sil</button>` : ''}
+        </td>
+      </tr>`).join('')}
     </tbody></table></div></div>
   `;
 }
@@ -2004,15 +2108,263 @@ function renderCommentsAdmin(main) {
     </tbody></table></div>${!state.comments.length?'<p style="text-align:center;color:var(--muted);padding:2rem">Yorum yok</p>':''}</div>
   `;
 }
+
+function renderBansAdmin(main) {
+  const flaggedUsers = state.users.filter(u => u.banned || u.flagged);
+  const banCandidates = state.users.filter(u => u.role !== 'admin' && !u.banned);
+  main.innerHTML = `
+    <div class="admin-header">
+      <div>
+        <h1>🛡️ Onay / Ban Yönetimi</h1>
+        <p style="color:var(--muted);font-size:0.9rem;margin-top:0.25rem">
+          Banlanan kullanıcıların tüm yazıları ve yeni paylaşımları diğer herkesten gizlenir (sadece kendisi ve sen görebilirsin). Kullanıcıya buradaki rastgele kodu verdiğinde banını açabilir; kodu yenilediğinde tekrar banlanır ve mimli olarak kayıtlı kalır.
+        </p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:1.5rem">
+      <h3 style="margin-bottom:1rem">Kullanıcı Banla</h3>
+      ${banCandidates.length ? `
+        <form id="ban-user-form" style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-end">
+          <div style="flex:1;min-width:180px">
+            <label style="font-size:0.85rem">Kullanıcı</label>
+            <select id="ban-target-select" required>
+              <option value="">Kullanıcı seçin...</option>
+              ${banCandidates.map(u => `<option value="${u.id}">${esc(u.username)} (${u.role})${u.flagged ? ' — ⚠️ Mimli' : ''}</option>`).join('')}
+            </select>
+          </div>
+          <div style="flex:2;min-width:200px">
+            <label style="font-size:0.85rem">Sebep (isteğe bağlı)</label>
+            <input id="ban-reason-input" placeholder="Örn: Uygunsuz içerik / inceleme bekliyor">
+          </div>
+          <button type="submit" class="btn btn-danger">🚫 Banla ve Şifre Üret</button>
+        </form>
+      ` : '<p style="color:var(--muted)">Banlanabilecek aktif kullanıcı yok.</p>'}
+    </div>
+
+    <div class="card">
+      <h3 style="margin-bottom:1rem">Banlı ve Mimli Kullanıcılar (${flaggedUsers.length})</h3>
+      ${flaggedUsers.length ? `
+        <div class="table-wrap"><table class="mobile-cards">
+          <thead><tr><th>Kullanıcı</th><th>Durum</th><th>Onay / Ban Açma Kodu</th><th>Sebep / Tarih</th><th>İşlemler</th></tr></thead>
+          <tbody>
+            ${flaggedUsers.map(u => `
+              <tr>
+                <td class="mc-title">${esc(u.username)} ${roleBadge(u.role)}</td>
+                <td data-label="Durum">${u.banned ? '<span class="badge badge-rejected">🚫 Banlı (Yazıları Gizli)</span>' : '<span class="badge badge-pending">⚠️ Mimli (Banı Açık)</span>'}</td>
+                <td data-label="Onay Kodu">
+                  <div style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap">
+                    <code style="padding:0.25rem 0.5rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-weight:700;letter-spacing:0.04em">${esc(u.unlockCode || '—')}</code>
+                    ${u.unlockCode ? `<button class="btn btn-secondary action-btn" onclick="copyText('${esc(u.unlockCode)}')">📋 Kopyala</button>` : ''}
+                  </div>
+                </td>
+                <td data-label="Detay">
+                  <div style="font-size:0.84rem">${esc(u.banReason || 'Sebep belirtilmedi')}</div>
+                  <div style="font-size:0.78rem;color:var(--muted)">${u.bannedAt ? fmtDateTime(u.bannedAt) : ''}</div>
+                </td>
+                <td class="action-btns mc-actions" style="flex-wrap:wrap">
+                  <button class="btn btn-danger action-btn" onclick="regenerateBanCode('${u.id}')">🔄 Şifre Değiştir & ${u.banned ? 'Yenile' : 'Tekrar Banla'}</button>
+                  ${u.banned ? `<button class="btn btn-primary action-btn" onclick="unbanUserDirect('${u.id}')">✅ Banı Aç</button>` : ''}
+                  ${!u.banned ? `<button class="btn btn-secondary action-btn" onclick="clearUserFlag('${u.id}')">🧹 Mimi Temizle</button>` : ''}
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table></div>
+      ` : '<p style="text-align:center;color:var(--muted);padding:2rem">Liste boş — şu an banlı veya mimli kimse yok. Herkes rahatça içerik paylaşabiliyor.</p>'}
+    </div>
+  `;
+  const form = $('#ban-user-form', main);
+  if(form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const uidTarget = $('#ban-target-select', main).value;
+      const reason = ($('#ban-reason-input', main).value || '').trim();
+      if(!uidTarget) return;
+      await banUser(uidTarget, reason);
+    });
+  }
+}
+
+function renderUnlockBan(main) {
+  const u = state.currentUser ? getUser(state.currentUser.id) : null;
+  if(!u || !u.banned) {
+    main.innerHTML = '<div class="card"><p>✅ Hesabında aktif bir ban bulunmuyor.</p></div>';
+    return;
+  }
+  main.innerHTML = `
+    <div class="admin-header"><h1>🔑 Ban Kaldırma / Onay Kodu</h1></div>
+    <div class="card" style="max-width:520px">
+      <p style="color:var(--muted);margin-bottom:1rem">
+        Hesabın şu an kısıtlı olduğu için yazıların sadece sana görünür. Yöneticiden aldığın onay kodunu aşağıya girerek banını kaldırabilirsin.
+      </p>
+      <form id="unlock-ban-form">
+        <div class="form-group">
+          <label>Onay / Ban Kaldırma Kodu</label>
+          <input id="unlock-code-input" placeholder="ONII-XXXX-XXXX" required autocomplete="off">
+        </div>
+        <button type="submit" class="btn btn-primary">Banı Kaldır</button>
+      </form>
+    </div>
+  `;
+  $('#unlock-ban-form', main).addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await submitUnlockCode($('#unlock-code-input', main).value);
+  });
+}
+
+function copyText(text) {
+  if(navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => toast('Onay kodu kopyalandı: ' + text)).catch(() => toast('Kod: ' + text));
+  } else {
+    toast('Kod: ' + text);
+  }
+}
+
+async function banUser(id, reason = '') {
+  const u = getUser(id);
+  if(!u || u.role === 'admin') return toast('Yönetici banlanamaz', 'error');
+  if(!reason) {
+    const asked = prompt(`"${u.username}" kullanıcısını banlama sebebi (isteğe bağlı):`, u.banReason || '');
+    if(asked === null) return;
+    reason = asked.trim();
+  }
+  u.banned = true;
+  u.flagged = true;
+  u.banReason = reason;
+  u.bannedAt = Date.now();
+  u.unlockCode = generateUnlockCode();
+  saveState();
+  try {
+    await saveUserToGitHub(u);
+    toast(`"${u.username}" banlandı! Onay kodu: ${u.unlockCode}`);
+  } catch(e) {
+    toast('Kaydetme hatası: ' + e.message, 'error');
+  }
+  await logActivity('user_ban', {
+    summary: `"${u.username}" kullanıcısını banladı (tüm yazıları gizlendi).`,
+    targetUserId: u.id
+  });
+  renderRoute(currentRoute);
+}
+
+async function regenerateBanCode(id) {
+  const u = getUser(id);
+  if(!u || u.role === 'admin') return;
+  const wasBanned = !!u.banned;
+  u.banned = true;
+  u.flagged = true;
+  u.bannedAt = Date.now();
+  u.unlockCode = generateUnlockCode();
+  saveState();
+  try {
+    await saveUserToGitHub(u);
+    toast(wasBanned ? `Yeni onay kodu üretildi: ${u.unlockCode}` : `"${u.username}" şifresi değiştirilerek tekrar banlandı! Yeni kod: ${u.unlockCode}`);
+  } catch(e) {
+    toast('Kaydetme hatası: ' + e.message, 'error');
+  }
+  await logActivity('user_ban', {
+    summary: `"${u.username}" kullanıcısının onay kodunu yenileyerek banladı.`,
+    targetUserId: u.id
+  });
+  renderRoute(currentRoute);
+}
+
+async function unbanUserDirect(id) {
+  const u = getUser(id);
+  if(!u) return;
+  u.banned = false;
+  u.flagged = true;
+  u.unlockedAt = Date.now();
+  saveState();
+  try {
+    await saveUserToGitHub(u);
+    toast(`"${u.username}" kullanıcısının banı açıldı (mimli olarak kayıtlı kalmaya devam ediyor).`);
+  } catch(e) {
+    toast('Kaydetme hatası: ' + e.message, 'error');
+  }
+  await logActivity('ban_unlock', {
+    summary: `"${u.username}" kullanıcısının banını kaldırdı.`,
+    targetUserId: u.id
+  });
+  renderRoute(currentRoute);
+}
+
+async function clearUserFlag(id) {
+  const u = getUser(id);
+  if(!u || u.banned) return;
+  if(!confirm(`"${u.username}" kullanıcısını mimli listeden tamamen kaldırmak istiyor musun?`)) return;
+  u.flagged = false;
+  u.unlockCode = '';
+  u.banReason = '';
+  saveState();
+  try {
+    await saveUserToGitHub(u);
+    toast(`"${u.username}" mimli listeden çıkarıldı.`);
+  } catch(e) {
+    toast('Kaydetme hatası: ' + e.message, 'error');
+  }
+  renderRoute(currentRoute);
+}
+
+async function submitUnlockCode(rawCode) {
+  const u = state.currentUser ? getUser(state.currentUser.id) : null;
+  if(!u || !u.banned) return;
+  const entered = (rawCode || '').trim().toUpperCase();
+  const expected = (u.unlockCode || '').trim().toUpperCase();
+  if(!entered || !expected || entered !== expected) {
+    return toast('Onay kodu hatalı! Yöneticiden güncel kodu iste.', 'error');
+  }
+  u.banned = false;
+  u.flagged = true;
+  u.unlockedAt = Date.now();
+  state.currentUser = { ...u, passwordHash: undefined };
+  saveState();
+  try {
+    await saveUserToGitHub(u);
+    toast('✅ Onay kodu doğrulandı! Banın kaldırıldı, yazıların artık herkese görünür.');
+  } catch(e) {
+    toast('Kaydetme hatası: ' + e.message, 'error');
+  }
+  await logActivity('ban_unlock', {
+    summary: 'Onay kodunu girerek banını kaldırdı.',
+    targetUserId: u.id
+  });
+  renderRoute(currentRoute);
+}
+
 function renderSettingsAdmin(main) {
+  const proxyUrl = getProxyUrl();
+  const unsyncedCount = state.posts.filter(p => p._unsynced).length;
   main.innerHTML = `
     <div class="admin-header"><h1>Site Ayarları</h1></div>
-    <form class="card" id="settings-form" style="max-width:600px">
+    <form class="card" id="settings-form" style="max-width:640px;margin-bottom:1.5rem">
       <div class="form-group"><label>Site Başlığı</label><input name="title" value="${esc(state.settings.title)}"></div>
       <div class="form-group"><label>Site Açıklaması</label><textarea name="description" rows="3">${esc(state.settings.description)}</textarea></div>
       <div class="form-group"><label>Footer Metni</label><textarea name="footer" rows="2">${esc(state.settings.footer)}</textarea></div>
       <button type="submit" class="btn btn-primary">Kaydet</button>
     </form>
+
+    <div class="card" style="max-width:640px">
+      <h3 style="margin-bottom:0.75rem">Sunucu (Worker) & Yedekleme</h3>
+      <p style="color:var(--muted);font-size:0.88rem;margin-bottom:1rem">
+        Durum: <span class="badge ${proxyUrl ? 'badge-published' : 'badge-draft'}">${proxyUrl ? 'Worker Sunucusu Aktif' : 'Sunucu Ayarlanmadı'}</span>
+      </p>
+      <div class="form-group">
+        <label>Worker Sunucu Adresi</label>
+        <input type="url" id="proxy-url-input" placeholder="https://onii-blog-api....workers.dev" value="${esc(proxyUrl)}" autocomplete="off">
+        <div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap">
+          <button class="btn btn-primary" id="save-proxy-btn" onclick="saveProxyUrl()">Sunucu URL Kaydet</button>
+          ${unsyncedCount ? `<button class="btn btn-secondary" onclick="syncUnsyncedPosts()">Bekleyen ${unsyncedCount} Yazıyı Eşitle</button>` : ''}
+        </div>
+      </div>
+      <hr style="border-color:var(--border);margin:1.25rem 0">
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+        <button id="init-repo-btn" class="btn btn-secondary" onclick="initGitHubRepo()">Tüm Verileri Sunucuya Eşitle</button>
+        <button class="btn btn-secondary" onclick="downloadBackup()">JSON Yedek İndir</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('backup-input').click()">JSON Yedekten Geri Yükle</button>
+        <input type="file" id="backup-input" accept=".json" class="visually-hidden" onchange="restoreBackup(event)">
+      </div>
+    </div>
   `;
   $('#settings-form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -2024,106 +2376,11 @@ function renderSettingsAdmin(main) {
     try {
       await saveSettingsToGitHub();
       await logActivity('settings_update', { summary: 'Site ayarlarını güncelledi.' });
-      toast('Ayarlar GitHub\'a kaydedildi');
+      toast('Site ayarları kaydedildi');
     } catch(err) {
-      toast('GitHub kaydetme hatası: ' + err.message, 'error');
+      toast('Kaydetme hatası: ' + err.message, 'error');
     }
   });
-}
-function renderStorageAdmin(main) {
-  const hasToken = !!getGhToken();
-  const proxyUrl = getProxyUrl();
-  const canWrite = hasWriteAccess();
-  const unsyncedCount = state.posts.filter(p => p._unsynced).length;
-  main.innerHTML = `
-    <div class="admin-header"><h1>Depolama / Token (Sadece Yönetici)</h1></div>
-    <div class="card" style="max-width:680px;margin-bottom:1.5rem">
-      <h3 style="margin-bottom:0.75rem">Durum:
-        <span class="badge ${canWrite ? 'badge-published' : 'badge-draft'}">
-          ${proxyUrl ? 'Ortak Sunucu Aktif (Her Cihazda & Herkes İçin Geçerli)' : (hasToken ? 'Token Kayıtlı (Bu Tarayıcıda Yazmaya Hazır)' : 'Bağlantı Yok (Sadece Okuma)')}
-        </span>
-      </h3>
-      <p style="color:var(--muted);font-size:0.9rem;margin-bottom:1.25rem">
-        <strong>Neden ham token doğrudan GitHub'a kaydedilemez?</strong> GitHub, herkese açık (public) repoya yazılan <code>github_pat_...</code> token'larını güvenlik nedeniyle saniyeler içinde otomatik iptal eder.<br>
-        <strong>Her cihazda ve tüm kullanıcılarda (mobil + PC) tek seferde çalışması için:</strong> Aşağıdaki <em>Ortak Yazma Sunucusu (Cloudflare Worker)</em> adresini bir kez girip kaydetmen yeterlidir — token sadece Cloudflare gizli değişkeninde durur, hiçbir kullanıcıya veya cihaza token girmen gerekmez.
-      </p>
-      <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:1.25rem;font-size:0.9rem">
-        <strong>Repo:</strong> <code>Onii-sama-blog/Onii-sama-blog.github.io</code> (Public, <code>main</code>)<br>
-        <strong>URL:</strong> <code>https://onii-sama-blog.github.io/</code>
-      </div>
-
-      <div class="form-group">
-        <label>1. GitHub Fine-Grained Token (Sadece bu tarayıcı — Contents: Read and write)</label>
-        <div style="display:flex;gap:0.5rem">
-          <input type="password" id="gh-token-input" placeholder="github_pat_... (yeni token yapıştırın)" value="" autocomplete="off" style="flex:1">
-          <button type="button" class="btn btn-secondary" id="toggle-token-vis" onclick="const i=$('#gh-token-input'); i.type=i.type==='password'?'text':'password';" title="Göster/Gizle">👁️</button>
-        </div>
-        ${hasToken ? `<p style="font-size:0.82rem;color:var(--accent);margin-top:0.35rem">✅ Bu tarayıcıda kayıtlı bir token var (${esc(getGhToken().slice(0, 12))}...).</p>` : ''}
-        <div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap">
-          <button class="btn btn-primary" id="save-token-btn" onclick="saveGhToken()">Token Doğrula ve Kaydet</button>
-          ${hasToken ? '<button class="btn btn-danger" onclick="clearGhToken()">Token Sil</button>' : ''}
-          ${unsyncedCount && canWrite ? `<button class="btn btn-secondary" onclick="syncUnsyncedPosts()">Bekleyen ${unsyncedCount} Yazıyı Eşitle</button>` : ''}
-        </div>
-      </div>
-
-      <hr style="border-color:var(--border);margin:1.5rem 0">
-
-      <div class="form-group">
-        <label>2. Ortak Yazma Sunucusu URL (Önerilen — Tüm Cihazlar & Kullanıcılar İçin)</label>
-        <input type="url" id="proxy-url-input" placeholder="https://onii-blog-api.kullanici.workers.dev" value="${esc(proxyUrl)}" autocomplete="off">
-        <p style="font-size:0.82rem;color:var(--muted);margin-top:0.35rem">
-          Bu adres <code>data/settings.txt</code> içine kaydedilir. Ayarlandığında mobil, PC ve diğer kullanıcılar token girmeden doğrudan GitHub'a yazabilir.
-        </p>
-        <div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap">
-          <button class="btn btn-primary" id="save-proxy-btn" onclick="saveProxyUrl()">Sunucu URL Kaydet</button>
-          ${proxyUrl ? '<button class="btn btn-danger" onclick="clearProxyUrl()">Sunucuyu Kaldır</button>' : ''}
-        </div>
-      </div>
-
-      <hr style="border-color:var(--border);margin:1.5rem 0">
-      <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
-        <button id="init-repo-btn" class="btn btn-secondary" onclick="initGitHubRepo()" ${!canWrite ? 'disabled style="opacity:0.5"' : ''}>Repo Yapısını Başlat / Verileri GitHub'a Eşitle</button>
-        <button class="btn btn-secondary" onclick="downloadBackup()">JSON Yedek İndir</button>
-        <button class="btn btn-secondary" onclick="document.getElementById('backup-input').click()">JSON Yedekten Geri Yükle</button>
-        <input type="file" id="backup-input" accept=".json" class="visually-hidden" onchange="restoreBackup(event)">
-      </div>
-    </div>
-  `;
-}
-
-async function saveGhToken() {
-  const input = $('#gh-token-input');
-  const btn = $('#save-token-btn');
-  const raw = (input?.value || '').replace(/\s+/g, '');
-  if(!raw || raw.startsWith('••')) return toast('Lütfen gerçek GitHub token kodunu yapıştırın', 'error');
-  if(!raw.startsWith('ghp_') && !raw.startsWith('github_pat_')) {
-    return toast('Geçersiz token formatı: "github_pat_" veya "ghp_" ile başlamalı (boşluksuz)', 'error');
-  }
-  if(btn) { btn.disabled = true; btn.textContent = 'Doğrulanıyor...'; }
-  try {
-    const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}`, {
-      headers: { 'Accept': 'application/vnd.github.v3+json', 'Authorization': `Bearer ${raw}` },
-      cache: 'no-store'
-    });
-    if(r.status === 401) throw new Error('Token geçersiz veya süresi dolmuş (401). Yeni bir token oluşturun.');
-    if(r.status === 404) throw new Error('Token bu repoya erişemiyor (404). Fine-Grained Token ayarında Onii-sama-blog.github.io reposunu seçin.');
-    if(!r.ok) throw new Error(`GitHub doğrulama hatası (${r.status})`);
-    const repo = await r.json();
-    if(repo.permissions && repo.permissions.push === false) {
-      throw new Error('Bu token\'ın yazma yetkisi yok! GitHub\'da "Contents: Read and write" iznini açın.');
-    }
-    setGhToken(raw);
-    if(getGhToken() !== raw) throw new Error('Tarayıcı localStorage yazmaya izin vermiyor (Gizli sekme kapalı olmalı).');
-    toast('✅ Token doğrulandı ve kaydedildi!');
-    if(state.posts.some(p => p._unsynced)) {
-      await syncUnsyncedPosts();
-    } else {
-      renderRoute(currentRoute);
-    }
-  } catch(e) {
-    toast(e.message, 'error');
-    if(btn) { btn.disabled = false; btn.textContent = 'Token Doğrula ve Kaydet'; }
-  }
 }
 
 async function saveProxyUrl() {
@@ -2137,26 +2394,12 @@ async function saveProxyUrl() {
     state.settings.proxyUrl = raw;
     saveState();
     await saveSettingsToGitHub();
-    toast('✅ Ortak yazma sunucusu kaydedildi! Artık tüm cihazlar ve kullanıcılar token olmadan yazabilir.');
+    toast('✅ Worker sunucu adresi kaydedildi!');
     renderRoute(currentRoute);
   } catch(e) {
     toast('Sunucu bağlantısı doğrulanamadı: ' + e.message, 'error');
     if(btn) { btn.disabled = false; btn.textContent = 'Sunucu URL Kaydet'; }
   }
-}
-
-async function clearProxyUrl() {
-  state.settings.proxyUrl = '';
-  saveState();
-  if(getGhToken()) { try { await saveSettingsToGitHub(); } catch {} }
-  toast('Ortak yazma sunucusu kaldırıldı');
-  renderRoute(currentRoute);
-}
-
-function clearGhToken() {
-  setGhToken('');
-  toast('Token silindi');
-  renderRoute(currentRoute);
 }
 
 /* ==================== MODALS / ACTIONS ==================== */
@@ -2274,6 +2517,7 @@ function createPostCard(post, editMode=false) {
         <span>${esc(post.category)}</span>
         <span>${fmtReadingTime(post.content)}</span>
         ${post.status==='draft' ? '<span class="badge badge-draft">Taslak</span>' : ''}
+        ${isUserBanned(post.authorId) ? '<span class="badge badge-rejected">🔒 Banlı (Gizli)</span>' : ''}
         ${post._unsynced ? '<span class="badge badge-pending">Yerel</span>' : ''}
       </div>
       <h2 class="post-card-title"><a href="${editMode ? editHref : '#/post?id='+post.id}" style="color:inherit">${esc(post.title)}</a></h2>
@@ -2344,6 +2588,233 @@ $('#theme-toggle').addEventListener('click', () => {
 window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
   if(!localStorage.getItem(THEME_KEY)) applyTheme(null);
 });
+
+/* ==================== FACEBOOK-STYLE SITE-ICI DM SOHBET ==================== */
+let chatOpen = false;
+let chatPeerId = null;
+let chatPollTimer = null;
+
+function getUnreadCountFor(userId, peerId = null) {
+  const msgs = Array.isArray(state.messages) ? state.messages : [];
+  return msgs.filter(m => m.toId === userId && !m.read && (!peerId || m.fromId === peerId)).length;
+}
+
+function getConversation(aId, bId) {
+  const msgs = Array.isArray(state.messages) ? state.messages : [];
+  return msgs.filter(m => (m.fromId === aId && m.toId === bId) || (m.fromId === bId && m.toId === aId))
+    .sort((x, y) => x.createdAt - y.createdAt);
+}
+
+async function refreshMessages(silent = true) {
+  try {
+    const fresh = await ghReadJson('data/messages.txt', null);
+    if(Array.isArray(fresh)) {
+      state.messages = fresh;
+      saveState();
+      renderChatWidget();
+      if(!silent) toast('Mesajlar güncellendi');
+    }
+  } catch(e) {
+    if(!silent) toast('Mesajlar yenilenemedi: ' + e.message, 'error');
+  }
+}
+
+function startChatPolling() {
+  if(chatPollTimer) clearInterval(chatPollTimer);
+  chatPollTimer = setInterval(() => {
+    if(chatOpen && state.currentUser) refreshMessages(true);
+  }, 12000);
+}
+
+function stopChatPolling() {
+  if(chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
+}
+
+function toggleChatDock(forceState = null) {
+  if(!state.currentUser) { navigate('#/login'); return; }
+  chatOpen = forceState !== null ? forceState : !chatOpen;
+  if(chatOpen) {
+    refreshMessages(true);
+    startChatPolling();
+  } else {
+    stopChatPolling();
+  }
+  renderChatWidget();
+}
+
+function openChatWith(peerId) {
+  if(!state.currentUser) { navigate('#/login'); return; }
+  if(peerId === state.currentUser.id) return toggleChatDock(true);
+  chatPeerId = peerId;
+  chatOpen = true;
+  markConversationRead(peerId);
+  refreshMessages(true);
+  startChatPolling();
+  renderChatWidget();
+}
+
+function openChatWithAdmin() {
+  if(!state.currentUser) { navigate('#/login'); return; }
+  const admin = state.users.find(u => u.role === 'admin' && u.id !== state.currentUser.id);
+  if(admin) openChatWith(admin.id);
+  else toggleChatDock(true);
+}
+
+async function markConversationRead(peerId) {
+  const me = state.currentUser;
+  if(!me || !peerId) return;
+  let changed = false;
+  (state.messages || []).forEach(m => {
+    if(m.fromId === peerId && m.toId === me.id && !m.read) { m.read = true; changed = true; }
+  });
+  if(changed) {
+    saveState();
+    try { await saveMessagesToGitHub(); } catch {}
+  }
+}
+
+async function sendDirectMessage(toId, text) {
+  const me = state.currentUser;
+  const clean = (text || '').trim();
+  if(!me || !toId || !clean) return;
+  if(!Array.isArray(state.messages)) state.messages = [];
+  // Önce en güncel mesajları çekip üzerine ekle ki çakışma olmasın
+  try {
+    const fresh = await ghReadJson('data/messages.txt', null);
+    if(Array.isArray(fresh)) state.messages = fresh;
+  } catch {}
+  state.messages.push({
+    id: uid(),
+    fromId: me.id,
+    toId,
+    text: clean,
+    createdAt: Date.now(),
+    read: false
+  });
+  state.messages = state.messages.slice(-400);
+  saveState();
+  renderChatWidget();
+  try {
+    await saveMessagesToGitHub();
+  } catch(e) {
+    toast('Mesaj gönderilemedi: ' + e.message, 'error');
+  }
+}
+
+function renderChatWidget() {
+  const root = $('#chat-root');
+  if(!root) return;
+  const me = state.currentUser;
+  if(!me) { root.innerHTML = ''; stopChatPolling(); return; }
+
+  const totalUnread = getUnreadCountFor(me.id);
+  const peers = state.users.filter(u => u.id !== me.id).sort((a, b) => {
+    const aLast = getConversation(me.id, a.id).slice(-1)[0]?.createdAt || 0;
+    const bLast = getConversation(me.id, b.id).slice(-1)[0]?.createdAt || 0;
+    if(aLast !== bLast) return bLast - aLast;
+    if(a.role === 'admin' && b.role !== 'admin') return -1;
+    if(b.role === 'admin' && a.role !== 'admin') return 1;
+    return a.username.localeCompare(b.username);
+  });
+
+  const peer = chatPeerId ? getUser(chatPeerId) : null;
+  let dockHtml = '';
+
+  if(chatOpen) {
+    if(peer) {
+      const conv = getConversation(me.id, peer.id);
+      const isMeAdminAndPeerBanned = me.role === 'admin' && peer.banned && peer.unlockCode;
+      dockHtml = `
+        <div class="chat-dock" id="chat-dock">
+          <div class="chat-dock-header">
+            <div class="chat-dock-title">
+              <button class="btn-ghost" onclick="chatPeerId=null; renderChatWidget();" style="font-size:1.1rem;padding:0.2rem 0.4rem" title="Geri">←</button>
+              <div class="comment-avatar" style="width:30px;height:30px;font-size:0.8rem">${avatarHtml(peer)}</div>
+              <div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(peer.username)} ${roleBadge(peer.role)}</div>
+            </div>
+            <div style="display:flex;gap:0.25rem">
+              <button class="btn-ghost" onclick="refreshMessages(false)" style="padding:0.25rem 0.45rem" title="Yenile">🔄</button>
+              <button class="btn-ghost" onclick="toggleChatDock(false)" style="padding:0.25rem 0.45rem" title="Kapat">✕</button>
+            </div>
+          </div>
+          <div class="chat-dock-body" id="chat-messages-box">
+            ${conv.length
+              ? conv.map(m => `
+                  <div class="chat-msg ${m.fromId === me.id ? 'me' : 'them'}">
+                    <div>${esc(m.text)}</div>
+                    <span class="chat-msg-time">${new Date(m.createdAt).toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'})}</span>
+                  </div>`).join('')
+              : `<p style="text-align:center;color:var(--muted);font-size:0.85rem;margin:auto">Henüz mesaj yok. ${esc(peer.username)} ile sohbeti başlat!</p>`}
+          </div>
+          ${isMeAdminAndPeerBanned ? `
+            <div class="chat-dock-quick">
+              <button type="button" class="btn btn-secondary" style="padding:0.35rem 0.7rem;font-size:0.78rem" onclick="sendDirectMessage('${peer.id}', 'Ban kaldırma onay kodun: ${esc(peer.unlockCode)}')">🔑 Onay Kodunu Gönder (${esc(peer.unlockCode)})</button>
+            </div>
+          ` : ''}
+          <form class="chat-dock-form" id="chat-send-form">
+            <input id="chat-msg-input" placeholder="Mesaj yaz..." required autocomplete="off">
+            <button type="submit" class="btn btn-primary">Gönder</button>
+          </form>
+        </div>
+      `;
+    } else {
+      dockHtml = `
+        <div class="chat-dock" id="chat-dock">
+          <div class="chat-dock-header">
+            <div class="chat-dock-title">💬 Mesajlar (DM)</div>
+            <div style="display:flex;gap:0.25rem">
+              <button class="btn-ghost" onclick="refreshMessages(false)" style="padding:0.25rem 0.45rem" title="Yenile">🔄</button>
+              <button class="btn-ghost" onclick="toggleChatDock(false)" style="padding:0.25rem 0.45rem" title="Kapat">✕</button>
+            </div>
+          </div>
+          <div class="chat-dock-body">
+            ${peers.length
+              ? peers.map(p => {
+                  const last = getConversation(me.id, p.id).slice(-1)[0];
+                  const unread = getUnreadCountFor(me.id, p.id);
+                  return `
+                    <button class="chat-user-row" onclick="openChatWith('${p.id}')">
+                      <div class="comment-avatar">${avatarHtml(p)}</div>
+                      <div class="chat-user-info">
+                        <div style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap">
+                          <strong>${esc(p.username)}</strong> ${roleBadge(p.role)}
+                          ${p.banned && me.role === 'admin' ? '<span class="badge badge-rejected">Banlı</span>' : ''}
+                        </div>
+                        <div class="chat-user-preview">${last ? (last.fromId === me.id ? 'Sen: ' : '') + esc(last.text) : 'Mesaj göndermek için tıkla'}</div>
+                      </div>
+                      ${unread ? `<span class="nav-badge">${unread}</span>` : ''}
+                    </button>`;
+                }).join('')
+              : '<p style="text-align:center;color:var(--muted);margin:auto;font-size:0.88rem">Mesajlaşabileceğin başka kullanıcı yok.</p>'}
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  root.innerHTML = `
+    ${dockHtml}
+    <button class="chat-fab" onclick="toggleChatDock()" aria-label="Sohbet / Mesajlar" title="Mesajlar (DM)">
+      💬
+      ${totalUnread ? `<span class="chat-fab-badge">${totalUnread}</span>` : ''}
+    </button>
+  `;
+
+  if(chatOpen && peer) {
+    const box = $('#chat-messages-box');
+    if(box) box.scrollTop = box.scrollHeight;
+    const form = $('#chat-send-form');
+    if(form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const inp = $('#chat-msg-input');
+        const val = inp.value;
+        inp.value = '';
+        await sendDirectMessage(peer.id, val);
+      });
+    }
+  }
+}
 </script>
 </body>
 </html>
