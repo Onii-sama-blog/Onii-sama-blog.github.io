@@ -347,8 +347,8 @@ async function ghFetch(path, options = {}) {
   const token = getGhToken();
   const proxy = getProxyUrl();
 
-  // Eğer ortak yazma sunucusu (Cloudflare Worker) ayarlıysa ve yerel token yoksa (veya yazma isteğiyse) proxy üzerinden git
-  if(proxy && (method === 'PUT' || method === 'DELETE') && !token) {
+  // Ortak yazma sunucusu (Cloudflare Worker) ayarlıysa yazma işlemlerinde her zaman önce onu kullan
+  if(proxy && (method === 'PUT' || method === 'DELETE')) {
     const cur = state.currentUser ? getUser(state.currentUser.id) : null;
     const r = await fetch(`${proxy}/gh`, {
       method: 'POST',
@@ -371,7 +371,15 @@ async function ghFetch(path, options = {}) {
   const headers = { 'Accept': 'application/vnd.github.v3+json', ...(options.headers || {}) };
   if(options.body) headers['Content-Type'] = 'application/json';
   if(token) headers['Authorization'] = `Bearer ${token}`;
-  const r = await fetch(`${GH_API}${path}`, { ...options, headers, cache: 'no-store' });
+  let r = await fetch(`${GH_API}${path}`, { ...options, headers, cache: 'no-store' });
+
+  // Tarayıcıda eski/bozuk bir token kaldıysa 401 verir; GET isteklerinde onu temizleyip tokensız tekrar dene
+  if(r.status === 401 && token && method === 'GET') {
+    setGhToken('');
+    delete headers['Authorization'];
+    r = await fetch(`${GH_API}${path}`, { ...options, headers, cache: 'no-store' });
+  }
+
   if(!r.ok) {
     const err = await r.text();
     throw new Error(`GitHub API ${r.status}: ${err}`);
