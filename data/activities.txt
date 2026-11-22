@@ -1,5 +1,17 @@
 [
   {
+    "id": "4d57e488-9f8d-4212-b52c-c40dba3d5f47",
+    "type": "user_ban",
+    "actorId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
+    "actorName": "Kob09",
+    "actorRole": "admin",
+    "targetUserId": "31501c30-1227-43dd-be14-00cdefd87bec",
+    "postId": null,
+    "postTitle": "",
+    "summary": "\"Takip12\" kullanıcısını banladı (tüm yazıları gizlendi).",
+    "createdAt": 1795347949405
+  },
+  {
     "id": "a9528427-4531-4256-a92f-1263b633bbd8",
     "type": "post_create",
     "actorId": "31501c30-1227-43dd-be14-00cdefd87bec",
