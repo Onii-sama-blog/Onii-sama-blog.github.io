@@ -1,5 +1,17 @@
 [
   {
+    "id": "ffdf0916-7697-4cbe-b4b5-cd344c5966cc",
+    "type": "profile_update",
+    "actorId": "31501c30-1227-43dd-be14-00cdefd87bec",
+    "actorName": "Takip12",
+    "actorRole": "editor",
+    "targetUserId": null,
+    "postId": null,
+    "postTitle": "",
+    "summary": "Profil bilgilerini güncelledi.",
+    "createdAt": 1795346575951
+  },
+  {
     "id": "512289a5-9ff0-4f0d-9a69-4fbd9efde002",
     "type": "profile_update",
     "actorId": "31501c30-1227-43dd-be14-00cdefd87bec",
