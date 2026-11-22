@@ -1,5 +1,17 @@
 [
   {
+    "id": "6c569049-866a-468f-9a9e-32e99e444a8c",
+    "type": "post_delete",
+    "actorId": "31501c30-1227-43dd-be14-00cdefd87bec",
+    "actorName": "Takip12",
+    "actorRole": "editor",
+    "targetUserId": null,
+    "postId": null,
+    "postTitle": "Eben",
+    "summary": "\"Eben\" başlıklı yazıyı sildi.",
+    "createdAt": 1795348463794
+  },
+  {
     "id": "d369cb22-d476-45a4-acdc-830cd2ebe62d",
     "type": "ban_unlock",
     "actorId": "31501c30-1227-43dd-be14-00cdefd87bec",
