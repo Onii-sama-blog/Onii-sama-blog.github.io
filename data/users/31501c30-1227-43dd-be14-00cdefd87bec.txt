@@ -9,9 +9,9 @@
   "createdAt": 1795345389931,
   "websiteHistory": [],
   "banned": false,
-  "flagged": true,
-  "banReason": "yanlış kelimeler",
+  "flagged": false,
+  "banReason": "",
   "bannedAt": 1795347946780,
-  "unlockCode": "ONII-HG95-8T8G",
+  "unlockCode": "",
   "unlockedAt": 1795348442985
 }
