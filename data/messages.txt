@@ -5,6 +5,6 @@
     "toId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
     "text": "Banımı kaldırmısın",
     "createdAt": 1795348325951,
-    "read": false
+    "read": true
   }
 ]
