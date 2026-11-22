@@ -142,7 +142,7 @@ tr:hover td { background: var(--bg-elevated); }
 .editor-toolbar { display: flex; gap: 0.25rem; flex-wrap: wrap; padding: 0.5rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm) var(--radius-sm) 0 0; margin-bottom: -1px; }
 .editor-toolbar button { padding: 0.5rem; border-radius: 4px; color: var(--muted); } .editor-toolbar button:hover { background: var(--border); color: var(--fg); }
 .editor-toolbar button.active { background: var(--accent-dim); color: var(--accent); }
-#editor { min-height: 300px; border-radius: 0 0 var(--radius-sm) var(--radius-sm); resize: vertical; font-family: var(--font-sans); line-height: 1.7; }
+#editor, #post-content { min-height: 300px; border-radius: 0 0 var(--radius-sm) var(--radius-sm); resize: vertical; font-family: var(--font-sans); line-height: 1.7; }
 .image-upload-area { border: 2px dashed var(--border); border-radius: var(--radius); padding: 2rem; text-align: center; color: var(--muted); cursor: pointer; transition: all var(--transition); }
 .image-upload-area:hover, .image-upload-area.dragover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
 .image-upload-area img { max-width: 100%; max-height: 200px; border-radius: var(--radius); }
@@ -165,16 +165,15 @@ tr:hover td { background: var(--bg-elevated); }
 <a href="#/authors" data-nav>Yazarlar</a>
 <a href="#/about" data-nav>Hakkında</a>
 <a href="#/login" data-nav id="nav-login">Giriş</a>
-<a href="#/register" data-nav class="hidden" id="nav-register">Kayıt</a>
 <a href="#/admin" data-nav class="hidden" id="nav-admin">Admin</a>
 <a href="#/profile" data-nav class="hidden" id="nav-profile">Profil</a>
-<button class="btn btn-secondary" id="logout-btn" class="hidden">Çıkış</button>
+<button class="btn btn-secondary hidden" id="logout-btn" onclick="logout()">Çıkış</button>
 </nav>
 <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Menü">☰</button>
 </div>
 </header>
 <main class="main" id="app"></main>
-<footer class="footer"><div class="container">Onii-sama blog — Tek dosya, GitHub Pages + GitHub API, profesyonel yapı</div></footer>
+<footer class="footer"><div class="container" id="site-footer">Onii-sama blog</div></footer>
 <div class="toast-container" id="toast-container"></div>
 <script>
 /* ==================== STATE & CONFIG ==================== */
@@ -197,34 +196,70 @@ let uploadImageBase64 = null;
 /* ==================== UTILITIES ==================== */
 const $ = (sel, ctx=document) => ctx.querySelector(sel);
 const $$ = (sel, ctx=document) => [...ctx.querySelectorAll(sel)];
-const el = (tag, attrs={}, children=[]) => { const e = document.createElement(tag); Object.entries(attrs).forEach(([k,v]) => k.startsWith('on') ? e.addEventListener(k.slice(2).toLowerCase(), v) : e.setAttribute(k,v)); children.forEach(c => e.append(c.nodeType ? c : document.createTextNode(c))); return e; };
-const html = (str) => { const t = document.createElement('template'); t.innerHTML = str.trim(); return t.content.firstChild; };
+const el = (tag, attrs={}, children=[]) => {
+  const e = document.createElement(tag);
+  Object.entries(attrs).forEach(([k,v]) => k.startsWith('on') ? e.addEventListener(k.slice(2).toLowerCase(), v) : e.setAttribute(k,v));
+  const list = Array.isArray(children) ? children : (children == null ? [] : [children]);
+  list.forEach(c => { if(c != null) e.append(c.nodeType ? c : document.createTextNode(String(c))); });
+  return e;
+};
+const html = (str) => {
+  const t = document.createElement('template');
+  t.innerHTML = str.trim();
+  return t.content.childNodes.length === 1 ? t.content.firstChild : t.content;
+};
 const fmtDate = (ts) => new Date(ts).toLocaleDateString('tr-TR', { year:'numeric', month:'long', day:'numeric' });
 const fmtDateTime = (ts) => new Date(ts).toLocaleString('tr-TR');
 const slugify = (str) => str.toLowerCase().trim().replace(/[ğüşıöç]/g, c=>({ğ:'g',ü:'u',ş:'s',ı:'i',ö:'o',ç:'c'}[c])).replace(/[^a-z0-9]+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');
 const uid = () => crypto.randomUUID();
 const hashPass = async (pass) => { const enc = new TextEncoder().encode(pass + 'salt_blog_2026'); const buf = await crypto.subtle.digest('SHA-256', enc); return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join(''); };
 const verifyPass = async (pass, hash) => hash === await hashPass(pass);
-const toast = (msg, type='success') => { const c = $('#toast-container'); const t = el('div', {class:`toast ${type}`}, [el('span',{},msg), el('button',{class:'btn-ghost',onclick:()=>t.remove()},'✕')]); c.append(t); setTimeout(()=>t.remove(), 5000); };
-const showModal = (content) => { document.body.append(el('div',{class:'modal-overlay',onclick:e=>{if(e.target===e.currentTarget)e.currentTarget.remove()}},[el('div',{class:'modal'},content)])); };
+const toast = (msg, type='success') => { const c = $('#toast-container'); const t = el('div', {class:`toast ${type}`}, [el('span',{},[msg]), el('button',{class:'btn-ghost',onclick:()=>t.remove()},['✕'])]); c.append(t); setTimeout(()=>t.remove(), 5000); };
+const showModal = (content) => { document.body.append(el('div',{class:'modal-overlay',onclick:e=>{if(e.target===e.currentTarget)e.currentTarget.remove()}},[el('div',{class:'modal'},[content])])); };
 const closeModal = () => $('.modal-overlay')?.remove();
-const setNav = () => { const u = state.currentUser; $('#nav-login').classList.toggle('hidden', !!u); $('#nav-register').classList.toggle('hidden', !u || u.role!=='admin'); $('#nav-admin').classList.toggle('hidden', !u); $('#nav-profile').classList.toggle('hidden', !u); $('#logout-btn').classList.toggle('hidden', !u); };
-const saveState = () => { 
-  try { 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); 
-  } catch(e){ console.error('Save failed',e); } 
+const applySiteMeta = () => {
+  const title = state.settings?.title || 'Onii-sama blog';
+  document.title = title;
+  const logo = $('.logo'); if(logo) logo.textContent = title;
+  const footer = $('#site-footer'); if(footer) footer.textContent = state.settings?.footer || title;
+};
+const setNav = () => {
+  const u = state.currentUser;
+  $('#nav-login')?.classList.toggle('hidden', !!u);
+  $('#nav-admin')?.classList.toggle('hidden', !u);
+  $('#nav-profile')?.classList.toggle('hidden', !u);
+  $('#logout-btn')?.classList.toggle('hidden', !u);
+  applySiteMeta();
+};
+const saveState = () => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch(e){ console.error('Save failed',e); }
 };
 const loadState = () => { try { const s = localStorage.getItem(STORAGE_KEY); if(s) state = {...state, ...JSON.parse(s)}; } catch(e){ console.error('Load failed',e); } };
 
 /* ==================== GITHUB PAGES API (Public Read / Token Write) ==================== */
 function getGhToken() { return localStorage.getItem('gh_token') || ''; }
 function setGhToken(t) { if(t) localStorage.setItem('gh_token', t); else localStorage.removeItem('gh_token'); }
+function utf8ToBase64(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  for(let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+function base64ToUtf8(b64) {
+  const bin = atob(b64.replace(/\s/g, ''));
+  const bytes = new Uint8Array(bin.length);
+  for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
 
 async function ghFetch(path, options = {}) {
   const token = getGhToken();
   const headers = { 'Accept': 'application/vnd.github.v3+json', ...(options.headers || {}) };
+  if(options.body) headers['Content-Type'] = 'application/json';
   if(token) headers['Authorization'] = `Bearer ${token}`;
-  const r = await fetch(`${GH_API}${path}`, { ...options, headers });
+  const r = await fetch(`${GH_API}${path}`, { ...options, headers, cache: 'no-store' });
   if(!r.ok) {
     const err = await r.text();
     throw new Error(`GitHub API ${r.status}: ${err}`);
@@ -236,8 +271,10 @@ async function ghGetFile(path) {
   try {
     const data = await ghFetch(`/${path}?ref=${GH_BRANCH}`);
     if(data.type === 'dir') return null;
-    const content = atob(data.content.replace(/\s/g, ''));
-    return { content: JSON.parse(content), sha: data.sha };
+    const raw = base64ToUtf8(data.content);
+    let parsed = raw;
+    try { parsed = JSON.parse(raw); } catch {}
+    return { content: parsed, sha: data.sha };
   } catch(e) {
     if(e.message.includes('404')) return null;
     throw e;
@@ -256,9 +293,14 @@ async function ghListDir(path) {
 }
 
 async function ghPutFile(path, content, message, sha) {
+  if(!sha) {
+    const existing = await ghGetFile(path);
+    if(existing) sha = existing.sha;
+  }
+  const serialized = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
   const body = {
     message,
-    content: btoa(JSON.stringify(content, null, 2)),
+    content: utf8ToBase64(serialized),
     branch: GH_BRANCH,
     ...(sha && { sha })
   };
@@ -271,26 +313,32 @@ async function ghDeleteFile(path, message, sha) {
 
 async function loadFromGitHub() {
   try {
+    const bust = `?t=${Date.now()}`;
     const [postsFiles, usersFiles, commentsRaw, categoriesRaw, settingsRaw] = await Promise.all([
       ghListDir('data/posts'),
       ghListDir('data/users'),
-      fetch(`${GH_RAW}/data/comments.txt`).then(r => r.ok ? r.json() : []).catch(() => []),
-      fetch(`${GH_RAW}/data/categories.txt`).then(r => r.ok ? r.json() : []).catch(() => []),
-      fetch(`${GH_RAW}/data/settings.txt`).then(r => r.ok ? r.json() : null).catch(() => null)
+      fetch(`${GH_RAW}/data/comments.txt${bust}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`${GH_RAW}/data/categories.txt${bust}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`${GH_RAW}/data/settings.txt${bust}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null)
     ]);
 
-    const posts = await Promise.all(postsFiles.map(f => 
-      fetch(`${GH_RAW}/data/posts/${f}`).then(r => r.ok ? r.json() : null).catch(() => null)
+    const posts = await Promise.all(postsFiles.map(f =>
+      fetch(`${GH_RAW}/data/posts/${f}${bust}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null)
     ));
-    const users = await Promise.all(usersFiles.map(f => 
-      fetch(`${GH_RAW}/data/users/${f}`).then(r => r.ok ? r.json() : null).catch(() => null)
+    const users = await Promise.all(usersFiles.map(f =>
+      fetch(`${GH_RAW}/data/users/${f}${bust}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null)
     ));
 
-    state.posts = posts.filter(Boolean);
-    state.users = users.filter(Boolean);
-    state.comments = commentsRaw || [];
-    state.categories = categoriesRaw || ['Genel', 'Teknoloji', 'Yaşam', 'Ödev'];
-    state.settings = settingsRaw || { title: 'Onii-sama blog', description: 'Onii-sama blog - Kardeşim için', footer: '' };
+    const validPosts = posts.filter(Boolean);
+    const validUsers = users.filter(Boolean);
+    if(validUsers.length || validPosts.length || settingsRaw) {
+      state.posts = validPosts;
+      if(validUsers.length) state.users = validUsers;
+      if(Array.isArray(commentsRaw)) state.comments = commentsRaw;
+      if(Array.isArray(categoriesRaw) && categoriesRaw.length) state.categories = categoriesRaw;
+      if(settingsRaw) state.settings = { ...state.settings, ...settingsRaw };
+      saveState();
+    }
     return true;
   } catch(e) {
     console.warn('GitHub load failed, using localStorage fallback:', e);
@@ -301,45 +349,36 @@ async function loadFromGitHub() {
 async function savePostToGitHub(post) {
   const token = getGhToken();
   if(!token) throw new Error('GitHub token gerekli (Admin → Depolama)');
-  const path = `data/posts/${post.id}.txt`;
-  let sha;
-  try {
-    const existing = await ghGetFile(path);
-    sha = existing?.sha;
-  } catch(e) {}
-  return ghPutFile(path, post, `Update post ${post.id}`, sha);
+  return ghPutFile(`data/posts/${post.id}.txt`, post, `Update post ${post.id}`);
 }
 
 async function saveUserToGitHub(user) {
   const token = getGhToken();
-  if(!token) throw new Error('GitHub token gerekli');
-  const path = `data/users/${user.id}.txt`;
-  let sha;
-  try { const existing = await ghGetFile(path); sha = existing?.sha; } catch(e) {}
-  return ghPutFile(path, user, `Update user ${user.id}`, sha);
+  if(!token) throw new Error('GitHub token gerekli (Admin → Depolama)');
+  return ghPutFile(`data/users/${user.id}.txt`, user, `Update user ${user.id}`);
 }
 
 async function saveSettingsToGitHub() {
   const token = getGhToken();
-  if(!token) throw new Error('GitHub token gerekli');
+  if(!token) throw new Error('GitHub token gerekli (Admin → Depolama)');
   return ghPutFile('data/settings.txt', state.settings, 'Update settings');
 }
 
 async function saveCategoriesToGitHub() {
   const token = getGhToken();
-  if(!token) throw new Error('GitHub token gerekli');
+  if(!token) throw new Error('GitHub token gerekli (Admin → Depolama)');
   return ghPutFile('data/categories.txt', state.categories, 'Update categories');
 }
 
 async function saveCommentsToGitHub() {
   const token = getGhToken();
-  if(!token) throw new Error('GitHub token gerekli');
+  if(!token) throw new Error('GitHub token gerekli (Admin → Depolama)');
   return ghPutFile('data/comments.txt', state.comments, 'Update comments');
 }
 
 async function deletePostFromGitHub(id) {
   const token = getGhToken();
-  if(!token) throw new Error('GitHub token gerekli');
+  if(!token) throw new Error('GitHub token gerekli (Admin → Depolama)');
   const path = `data/posts/${id}.txt`;
   const existing = await ghGetFile(path);
   if(!existing) return;
@@ -348,7 +387,7 @@ async function deletePostFromGitHub(id) {
 
 async function deleteUserFromGitHub(id) {
   const token = getGhToken();
-  if(!token) throw new Error('GitHub token gerekli');
+  if(!token) throw new Error('GitHub token gerekli (Admin → Depolama)');
   const path = `data/users/${id}.txt`;
   const existing = await ghGetFile(path);
   if(!existing) return;
@@ -356,19 +395,29 @@ async function deleteUserFromGitHub(id) {
 }
 
 async function initGitHubRepo() {
-  const token = getGhToken();
-  if(!token) throw new Error('GitHub token gerekli');
-  const files = await ghListDir('data');
-  if(files.length === 0) {
-    await Promise.all([
-      ghPutFile('data/settings.txt', { title: 'Onii-sama blog', description: 'Onii-sama blog - Kardeşim için', footer: '' }, 'Init settings'),
-      ghPutFile('data/categories.txt', ['Genel', 'Teknoloji', 'Yaşam', 'Ödev'], 'Init categories'),
-      ghPutFile('data/comments.txt', [], 'Init comments'),
-      ghPutFile('data/posts/.gitkeep', '', 'Init posts dir'),
-      ghPutFile('data/users/.gitkeep', '', 'Init users dir')
-    ]);
+  const btn = $('#init-repo-btn');
+  try {
+    const token = getGhToken();
+    if(!token) return toast('Önce GitHub token girip Kaydet butonuna basın', 'error');
+    if(btn) { btn.disabled = true; btn.textContent = 'Repo başlatılıyor...'; }
+    await ghPutFile('data/settings.txt', state.settings, 'Init/sync settings');
+    await ghPutFile('data/categories.txt', state.categories, 'Init/sync categories');
+    await ghPutFile('data/comments.txt', state.comments, 'Init/sync comments');
+    await ghPutFile('data/posts/.gitkeep', '', 'Init posts dir');
+    await ghPutFile('data/users/.gitkeep', '', 'Init users dir');
+    for(const u of state.users) {
+      await ghPutFile(`data/users/${u.id}.txt`, u, `Sync user ${u.username}`);
+    }
+    for(const p of state.posts) {
+      await ghPutFile(`data/posts/${p.id}.txt`, p, `Sync post ${p.id}`);
+    }
+    toast('Repo yapısı oluşturuldu ve mevcut hesap/veriler GitHub\'a aktarıldı!');
+  } catch(e) {
+    console.error(e);
+    toast('Repo başlatma hatası: ' + e.message, 'error');
+  } finally {
+    if(btn) { btn.disabled = false; btn.textContent = 'Repo Yapısını Başlat / Verileri GitHub\'a Eşitle'; }
   }
-  return true;
 }
 
 /* ==================== DATA HELPERS ==================== */
@@ -386,12 +435,16 @@ async function login(username, password) {
   state.currentUser = {...user, passwordHash: undefined};
   saveState(); setNav(); return true;
 }
-function logout() { state.currentUser = null; saveState(); setNav(); navigate('#/'); }
-async function register(username, password, role='author') {
+function logout() { state.currentUser = null; sessionStorage.removeItem('blog_session'); saveState(); setNav(); toast('Çıkış yapıldı'); navigate('#/'); }
+async function register(username, password, role='author', silentNoToken=false) {
   if(state.users.some(u => u.username === username)) return {ok:false, msg:'Kullanıcı adı alınmış'};
   const user = { id:uid(), username, passwordHash:await hashPass(password), role, bio:'', avatar:'', website:'', createdAt:Date.now() };
   state.users.push(user); saveState();
-  try { await saveUserToGitHub(user); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); }
+  if(getGhToken()) {
+    try { await saveUserToGitHub(user); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); }
+  } else if(!silentNoToken) {
+    toast('Kullanıcı yerel kaydedildi. GitHub\'a yazmak için Admin → Depolama\'dan token girin.', 'warning');
+  }
   return {ok:true, user:{...user, passwordHash:undefined}};
 }
 function requireAuth(roles=['admin','editor','author']) {
@@ -406,8 +459,9 @@ window.addEventListener('hashchange', () => renderRoute(location.hash.slice(1) |
 window.addEventListener('load', async () => {
   loadState();
   const ok = await loadFromGitHub();
-  if(!ok) toast('GitHub\'dan yüklenemedi, localStorage kullanılıyor', 'warning');
-  if(state.users.length === 0) { navigate('#/setup'); return; }
+  if(!ok) toast('GitHub\'dan yüklenemedi, yerel önbellek kullanılıyor', 'warning');
+  applySiteMeta();
+  if(state.users.length === 0) { setNav(); navigate('#/setup'); renderRoute('/setup'); return; }
   const session = sessionStorage.getItem('blog_session');
   if(session) { const u = state.users.find(x => x.id === session); if(u) state.currentUser = {...u, passwordHash:undefined}; }
   setNav();
@@ -428,7 +482,8 @@ function renderRoute(route) {
   if(path === '/admin') return renderAdmin(app);
   if(path === '/profile') return renderProfile(app);
   if(path === '/post') return renderPost(app, params.get('id'));
-  if(path === '/category') return renderCategory(app, params.get('name'));
+  if(path === '/category' || path === '/categories') return renderCategory(app, params.get('name'));
+  if(path === '/authors') return renderAuthorsList(app);
   if(path === '/author') return renderAuthor(app, params.get('id'));
   if(path === '/posts') return renderPostsList(app);
   if(path === '/about') return renderAbout(app);
@@ -515,7 +570,7 @@ function renderPost(app, id) {
         </form>
       `));
     } else {
-      commentsSection.append(el('p', {style:'color:var(--muted);margin-bottom:1rem'}, '<a href="#/login">Giriş yap</a> yorum yazmak için.'));
+      commentsSection.append(html(`<p style="color:var(--muted);margin-bottom:1rem">Yorum yazmak için <a href="#/login">giriş yapın</a>.</p>`));
     }
     const list = el('div', {class:'comment-list'});
     comments.forEach(c => {
@@ -573,61 +628,54 @@ function renderAuthor(app, id) {
   if(!posts.length) grid.append(el('p', {style:'grid-column:1/-1;text-align:center;color:var(--muted)'}, 'Bu yazar henüz yazı yayınlamamış.'));
   app.append(section);
 }
+function renderAuthorsList(app) {
+  const section = el('div', {class:'container'});
+  section.append(el('h1', {class:'section-title'}, 'Yazarlar'));
+  const grid = el('div', {style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem'});
+  state.users.forEach(u => {
+    const count = getUserPosts(u.id).filter(p => p.status==='published').length;
+    grid.append(html(`<a href="#/author?id=${u.id}" class="card" style="text-align:center;padding:2rem;text-decoration:none"><div class="profile-avatar" style="width:72px;height:72px;font-size:1.75rem;margin:0 auto 1rem">${u.username[0].toUpperCase()}</div><h3>${u.username}</h3><p style="color:var(--muted);margin-top:0.25rem">${count} yazı</p></a>`));
+  });
+  section.append(grid);
+  if(!state.users.length) section.append(el('p', {style:'text-align:center;color:var(--muted);margin-top:2rem'}, 'Henüz yazar yok.'));
+  app.append(section);
+}
 function renderAbout(app) {
   const section = el('div', {class:'container', style:'max-width:700px'});
   section.append(html(`
     <h1 class="section-title">Hakkında</h1>
     <div class="card" style="margin-top:1rem">
-      <p style="margin-bottom:1rem">${state.settings.description || 'Bu, tek bir HTML dosyası içinde çalışan, admin panelli, hibrit depolamalı (File System Access API + localStorage) profesyonel bir blog sitesidir.'}</p>
-      <p style="margin-bottom:1rem"><strong>Özellikler:</strong></p>
-      <ul style="margin-left:1.5rem;line-height:2">
-        <li>Tek dosya (<code>index.html</code>), hiçbir bağımlılık yok</li>
-        <li>Admin paneli: yazı/ kullanıcı/ kategori/ yorum yönetimi</li>
-        <li>Kullanıcı hesapları: kayıt, giriş, profil düzenleme, roller (admin/editor/author)</li>
-        <li>Yazılar: oluşturma, düzenleme, silme, taslak/yayın, kapak görseli, etiketler</li>
-        <li>Gerçek <code>.txt</code> dosyaları (Chrome/Edge File System Access API) — her yazı ayrı dosya</li>
-        <li>Desteklenmeyen tarayıcılarda <code>localStorage</code> + txt indirme/yükleme</li>
-        <li>Koyu/açık tema, responsive, modern CSS</li>
-        <li>Markdown-benzeri basit format desteği</li>
-      </ul>
+      <p style="margin-bottom:1rem">${state.settings.description || 'Onii-sama blog — ödev ve yazılar için sade, hızlı ve reklamsız blog platformu.'}</p>
+      <p style="color:var(--muted)">Tüm yazılar doğrudan GitHub Pages üzerinden yayınlanır.</p>
     </div>
   `));
   app.append(section);
 }
 function renderLogin(app) { renderAuthForm(app, 'login'); }
-function renderRegister(app) { renderAuthForm(app, 'register'); }
+function renderRegister(app) {
+  if(!requireAuth(['admin'])) return;
+  navigate('#/admin?tab=users');
+}
 
 function renderAuthForm(app, mode) {
   app.append(html(`
     <div class="auth-page"><div class="card auth-card">
-      <div class="auth-tabs">
-        <button class="auth-tab ${mode==='login'?'active':''}" onclick="navigate('#/login')">Giriş</button>
-        <button class="auth-tab ${mode==='register'?'active':''}" onclick="navigate('#/register')">Kayıt</button>
-      </div>
-      <h2 style="margin-bottom:1.5rem">${mode==='login'?'Giriş Yap':'Hesap Oluştur'}</h2>
+      <h2 style="margin-bottom:1.5rem">Giriş Yap</h2>
       <form id="auth-form">
         <div class="form-group"><label>Kullanıcı Adı</label><input name="username" required autocomplete="username"></div>
-        <div class="form-group"><label>Şifre</label><input name="password" type="password" required autocomplete="${mode==='login'?'current-password':'new-password'}"></div>
-        ${mode==='register' ? '<div class="form-group"><label>Rol</label><select name="role"><option value="author">Yazar</option><option value="editor">Editör</option></select></div>' : ''}
-        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem">${mode==='login'?'Giriş':'Kayıt Ol'}</button>
+        <div class="form-group"><label>Şifre</label><input name="password" type="password" required autocomplete="current-password"></div>
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem">Giriş</button>
       </form>
-      <p style="margin-top:1rem;text-align:center;color:var(--muted);font-size:0.9rem">${mode==='login' ? 'Hesabın yok mu? <a href="#/register">Kayıt ol</a>' : 'Zaten hesabın var mı? <a href="#/login">Giriş yap</a>'}</p>
+      <p style="margin-top:1rem;text-align:center;color:var(--muted);font-size:0.85rem">Hesaplar yalnızca yönetici (Admin) tarafından oluşturulur.</p>
     </div></div>
   `));
   $('#auth-form').addEventListener('submit', async e => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const username = fd.get('username'), password = fd.get('password');
-    if(mode==='login') {
-      const ok = await login(username, password);
-      if(ok) { sessionStorage.setItem('blog_session', state.currentUser.id); toast('Giriş başarılı'); navigate('#/'); }
-      else toast('Kullanıcı adı veya şifre hatalı', 'error');
-    } else {
-      const role = fd.get('role');
-      const res = await register(username, password, role);
-      if(res.ok) { toast('Kayıt başarılı, giriş yapılıyor'); const ok=await login(username,password); if(ok){ sessionStorage.setItem('blog_session', state.currentUser.id); navigate('#/'); } }
-      else toast(res.msg, 'error');
-    }
+    const ok = await login(username, password);
+    if(ok) { sessionStorage.setItem('blog_session', state.currentUser.id); toast('Giriş başarılı'); navigate('#/'); }
+    else toast('Kullanıcı adı veya şifre hatalı', 'error');
   });
 }
 
@@ -657,12 +705,12 @@ function renderSetup(app) {
     const username = fd.get('username'), password = fd.get('password');
     const title = fd.get('title'), description = fd.get('description');
     state.settings.title = title; state.settings.description = description;
-    const res = await register(username, password, 'admin');
+    const res = await register(username, password, 'admin', true);
     if(!res.ok) return toast(res.msg, 'error');
     state.currentUser = res.user;
     sessionStorage.setItem('blog_session', state.currentUser.id);
     saveState(); setNav();
-    toast('Kurulum tamamlandı! Repo GitHub Pages\'e deploy edildikten sonra Admin → Depolama → GitHub Token girip "Repo Yapısını Başlat" deyin.'); navigate('#/admin');
+    toast('Admin oluşturuldu! Şimdi Depolama sekmesinden GitHub Token girip "Repo Yapısını Başlat" butonuna basın.'); navigate('#/admin?tab=storage');
   });
 }
 
@@ -716,7 +764,11 @@ function renderProfile(app) {
           state.users[userIdx].passwordHash = await hashPass(newpass);
         }
         state.currentUser = {...state.users[userIdx], passwordHash:undefined};
-        saveState(); toast('Profil güncellendi');
+        saveState();
+        if(getGhToken()) {
+          try { await saveUserToGitHub(state.users[userIdx]); } catch(err) { toast('GitHub kaydetme hatası: ' + err.message, 'error'); }
+        }
+        toast('Profil güncellendi');
       }
     });
   };
@@ -731,7 +783,7 @@ function renderProfile(app) {
 }
 
 function renderAdmin(app) {
-  if(!requireAuth(['admin','editor'])) return;
+  if(!requireAuth(['admin','editor','author'])) return;
   const u = state.currentUser;
   const isAdmin = u.role === 'admin';
   const editId = new URLSearchParams(location.hash.split('?')[1]||'').get('edit');
@@ -739,15 +791,15 @@ function renderAdmin(app) {
   app.innerHTML = `
     <div class="admin-layout">
       <aside class="admin-sidebar">
-        <div class="admin-sidebar-title">Admin Paneli</div>
+        <div class="admin-sidebar-title">${isAdmin ? 'Admin Paneli' : 'Yazar Paneli'}</div>
         <nav class="admin-nav">
           <a href="#/admin?tab=dashboard" data-tab="dashboard">📊 Dashboard</a>
           <a href="#/admin?tab=posts" data-tab="posts">📝 Yazılar</a>
-          <a href="#/admin?tab=categories" data-tab="categories">🏷️ Kategoriler</a>
+          ${isAdmin ? '<a href="#/admin?tab=categories" data-tab="categories">🏷️ Kategoriler</a>' : ''}
           ${isAdmin ? '<a href="#/admin?tab=users" data-tab="users">👥 Kullanıcılar</a>' : ''}
           ${isAdmin ? '<a href="#/admin?tab=comments" data-tab="comments">💬 Yorumlar</a>' : ''}
           ${isAdmin ? '<a href="#/admin?tab=settings" data-tab="settings">⚙️ Ayarlar</a>' : ''}
-          ${isAdmin ? '<a href="#/admin?tab=storage" data-tab="storage">💾 Depolama</a>' : ''}
+          <a href="#/admin?tab=storage" data-tab="storage">💾 Depolama / Token</a>
         </nav>
       </aside>
       <main class="admin-main" id="admin-main"></main>
@@ -759,10 +811,10 @@ function renderAdmin(app) {
   switch(tab) {
     case 'dashboard': renderDashboard(main); break;
     case 'posts': renderPostsAdmin(main); break;
-    case 'categories': renderCategoriesAdmin(main); break;
-    case 'users': renderUsersAdmin(main); break;
-    case 'comments': renderCommentsAdmin(main); break;
-    case 'settings': renderSettingsAdmin(main); break;
+    case 'categories': if(isAdmin) renderCategoriesAdmin(main); break;
+    case 'users': if(isAdmin) renderUsersAdmin(main); break;
+    case 'comments': if(isAdmin) renderCommentsAdmin(main); break;
+    case 'settings': if(isAdmin) renderSettingsAdmin(main); break;
     case 'storage': renderStorageAdmin(main); break;
   }
 }
@@ -788,31 +840,45 @@ function renderDashboard(main) {
 function renderPostsAdmin(main) {
   const showNew = new URLSearchParams(location.hash.split('?')[1]||'').get('new');
   if(showNew) return renderPostEditor(main, null);
+  const isAdmin = state.currentUser?.role === 'admin' || state.currentUser?.role === 'editor';
+  const visiblePosts = (isAdmin ? state.posts : getUserPosts(state.currentUser.id)).slice().sort((a,b)=>b.createdAt-a.createdAt);
   main.innerHTML = `
     <div class="admin-header"><h1>Yazılar</h1><a href="#/admin?tab=posts&new=1" class="btn btn-primary">Yeni Yazı</a></div>
     <div class="card">
       <div class="table-wrap"><table><thead><tr><th>Başlık</th><th>Yazar</th><th>Kategori</th><th>Durum</th><th>Tarih</th><th></th></tr></thead><tbody>
-        ${state.posts.sort((a,b)=>b.createdAt-a.createdAt).map(p=>`<tr><td>${p.title}</td><td>${getUser(p.authorId)?.username||'?'}</td><td>${p.category}</td><td><span class="badge ${p.status==='published'?'badge-published':'badge-draft'}">${p.status==='published'?'Yayınlandı':'Taslak'}</span></td><td>${fmtDate(p.createdAt)}</td><td><a href="#/admin?edit=${p.id}" class="action-btn">Düzenle</a></td></tr>`).join('')}
+        ${visiblePosts.map(p=>`<tr><td>${p.title}</td><td>${getUser(p.authorId)?.username||'?'}</td><td>${p.category}</td><td><span class="badge ${p.status==='published'?'badge-published':'badge-draft'}">${p.status==='published'?'Yayınlandı':'Taslak'}</span></td><td>${fmtDate(p.createdAt)}</td><td class="action-btns"><a href="#/admin?edit=${p.id}" class="btn btn-secondary action-btn">Düzenle</a><button class="btn btn-danger action-btn" onclick="deletePost('${p.id}')">Sil</button></td></tr>`).join('')}
       </tbody></table></div>
-      ${!state.posts.length ? '<p style="text-align:center;color:var(--muted);padding:2rem">Henüz yazı yok</p>' : ''}
+      ${!visiblePosts.length ? '<p style="text-align:center;color:var(--muted);padding:2rem">Henüz yazı yok</p>' : ''}
     </div>
   `;
 }
+async function deletePost(id) {
+  if(!confirm('Bu yazıyı silmek istiyor musunuz?')) return;
+  state.posts = state.posts.filter(p => p.id !== id);
+  saveState();
+  try {
+    await deletePostFromGitHub(id);
+    toast('Yazı GitHub\'dan silindi');
+  } catch(e) {
+    toast('GitHub silme hatası: ' + e.message, 'error');
+  }
+  renderAdmin($('#app'));
+}
 function renderPostEditor(main, id) {
   editingPostId = id;
-  const post = id ? getPost(id) : { id:uid(), title:'', content:'', excerpt:'', category:state.categories[0], tags:[], status:'draft', coverImage:'', authorId:state.currentUser.id, createdAt:Date.now(), updatedAt:Date.now() };
+  const post = id ? getPost(id) : { id:uid(), title:'', content:'', excerpt:'', category:state.categories[0], tags:[], status:'published', coverImage:'', authorId:state.currentUser.id, createdAt:Date.now(), updatedAt:Date.now() };
   const isNew = !id;
   uploadImageBase64 = post.coverImage || null;
   main.innerHTML = `
-    <div class="admin-header"><h1>${isNew?'Yeni Yazı':`Düzenle: ${post.title}`}</h1><div><button class="btn btn-secondary" onclick="navigate('#/admin?tab=posts')">İptal</button><button class="btn btn-primary" id="save-post">${isNew?'Oluştur':'Güncelle'}</button></div></div>
+    <div class="admin-header"><h1>${isNew?'Yeni Yazı':`Düzenle: ${post.title}`}</h1><div style="display:flex;gap:0.5rem"><button class="btn btn-secondary" onclick="navigate('#/admin?tab=posts')">İptal</button><button class="btn btn-primary" id="save-post">${isNew?'Paylaş / Kaydet':'Güncelle'}</button></div></div>
     <div class="card" style="max-width:900px">
       <div class="form-group"><label>Başlık</label><input id="post-title" value="${post.title}" placeholder="Yazı başlığı"></div>
       <div class="form-row">
         <div class="form-group"><label>Kategori</label><select id="post-category">${state.categories.map(c=>`<option value="${c}" ${c===post.category?'selected':''}>${c}</option>`).join('')}</select></div>
-        <div class="form-group"><label>Durum</label><select id="post-status"><option value="draft" ${post.status==='draft'?'selected':''}>Taslak</option><option value="published" ${post.status==='published'?'selected':''}>Yayınlandı</option></select></div>
+        <div class="form-group"><label>Durum</label><select id="post-status"><option value="published" ${post.status==='published'?'selected':''}>Yayınlandı</option><option value="draft" ${post.status==='draft'?'selected':''}>Taslak</option></select></div>
       </div>
-      <div class="form-group"><label>Etiketler (virgülle ayırın)</label><input id="post-tags" value="${post.tags.join(', ')}" placeholder="teknoloji, yazılım, blog"></div>
-      <div class="form-group"><label>Kapak Görseli</label><div class="image-upload-area" id="cover-upload" onclick="document.getElementById('cover-input').click()" ondragover="e=>{e.preventDefault();e.currentTarget.classList.add('dragover')}" ondragleave="e=>e.currentTarget.classList.remove('dragover')" ondrop="handleImageDrop"><input type="file" id="cover-input" accept="image/*" class="visually-hidden" onchange="handleImageSelect"><span id="cover-text">${uploadImageBase64 ? 'Görsel yüklendi' : 'Tıklayın veya sürükleyin (max 2MB)'}</span>${uploadImageBase64 ? `<img src="${uploadImageBase64}" style="margin-top:1rem">` : ''}</div></div>
+      <div class="form-group"><label>Etiketler (virgülle ayırın)</label><input id="post-tags" value="${post.tags.join(', ')}" placeholder="ödev, yazılım, blog"></div>
+      <div class="form-group"><label>Kapak Görseli</label><div class="image-upload-area" id="cover-upload"><input type="file" id="cover-input" accept="image/*" class="visually-hidden"><span id="cover-text">${uploadImageBase64 ? 'Görsel yüklendi (değiştirmek için tıklayın)' : 'Tıklayın veya sürükleyin (max 2MB)'}</span>${uploadImageBase64 ? `<img id="cover-preview" src="${uploadImageBase64}" style="margin-top:1rem">` : ''}</div></div>
       <div class="form-group"><label>İçerik</label>
         <div class="editor-toolbar">
           <button type="button" data-fmt="bold" title="Kalın"><b>B</b></button>
@@ -835,9 +901,25 @@ function renderPostEditor(main, id) {
   $('#post-content').addEventListener('keydown', handleTab);
   $$('.editor-toolbar button').forEach(b => b.addEventListener('click', () => applyFormat(b.dataset.fmt)));
   $('#save-post').addEventListener('click', savePost);
-  function handleImageDrop(e) { e.preventDefault(); e.currentTarget.classList.remove('dragover'); const file = e.dataTransfer.files[0]; if(file) processImage(file); }
-  function handleImageSelect(e) { const file = e.target.files[0]; if(file) processImage(file); }
-  function processImage(file) { if(file.size > 2*1024*1024) return toast('Dosya 2MBdan büyük olamaz', 'error'); const reader = new FileReader(); reader.onload = ev => { uploadImageBase64 = ev.target.result; $('#cover-text').textContent = 'Görsel yüklendi'; const img = document.createElement('img'); img.src = uploadImageBase64; img.style.cssText = 'margin-top:1rem;max-width:100%;border-radius:var(--radius)'; $('#cover-upload').append(img); }; reader.readAsDataURL(file); }
+  const coverArea = $('#cover-upload');
+  const coverInput = $('#cover-input');
+  coverArea.addEventListener('click', (e) => { if(e.target !== coverInput) coverInput.click(); });
+  coverArea.addEventListener('dragover', (e) => { e.preventDefault(); coverArea.classList.add('dragover'); });
+  coverArea.addEventListener('dragleave', () => coverArea.classList.remove('dragover'));
+  coverArea.addEventListener('drop', (e) => { e.preventDefault(); coverArea.classList.remove('dragover'); const file = e.dataTransfer.files[0]; if(file) processImage(file); });
+  coverInput.addEventListener('change', (e) => { const file = e.target.files[0]; if(file) processImage(file); });
+  function processImage(file) {
+    if(file.size > 2*1024*1024) return toast('Dosya 2MB\'dan büyük olamaz', 'error');
+    const reader = new FileReader();
+    reader.onload = ev => {
+      uploadImageBase64 = ev.target.result;
+      $('#cover-text').textContent = 'Görsel yüklendi (değiştirmek için tıklayın)';
+      let img = $('#cover-preview');
+      if(!img) { img = document.createElement('img'); img.id = 'cover-preview'; img.style.cssText = 'margin-top:1rem;max-width:100%;border-radius:var(--radius)'; coverArea.append(img); }
+      img.src = uploadImageBase64;
+    };
+    reader.readAsDataURL(file);
+  }
 }
 async function savePost() {
   const title = $('#post-title').value.trim();
@@ -889,47 +971,46 @@ function renderSettingsAdmin(main) {
       <button type="submit" class="btn btn-primary">Kaydet</button>
     </form>
   `;
-  $('#settings-form').addEventListener('submit', async e => { e.preventDefault(); const fd=new FormData(e.target); state.settings.title=fd.get('title'); state.settings.description=fd.get('description'); state.settings.footer=fd.get('footer'); saveState(); try { await saveSettingsToGitHub(); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); } toast('Ayarlar kaydedildi'); });
+  $('#settings-form').addEventListener('submit', async e => { e.preventDefault(); const fd=new FormData(e.target); state.settings.title=fd.get('title'); state.settings.description=fd.get('description'); state.settings.footer=fd.get('footer'); saveState(); applySiteMeta(); try { await saveSettingsToGitHub(); toast('Ayarlar GitHub\'a kaydedildi'); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); } });
 }
 function renderStorageAdmin(main) {
   const hasToken = !!getGhToken();
   main.innerHTML = `
     <div class="admin-header"><h1>Depolama (GitHub Pages)</h1></div>
     <div class="card" style="max-width:600px">
-      <h3 style="margin-bottom:1rem">Mevcut Mod: <span class="badge badge-published">GitHub Pages + GitHub REST API</span></h3>
+      <h3 style="margin-bottom:1rem">Durum: <span class="badge ${hasToken ? 'badge-published' : 'badge-draft'}">${hasToken ? 'Token Kayıtlı (Yazmaya Hazır)' : 'Token Girilmedi (Sadece Okuma)'}</span></h3>
       <p style="color:var(--muted);margin-bottom:1.5rem">
-        <strong>Okuma (herkes):</strong> <code>raw.githubusercontent.com/Onii-sama-blog/Onii-sama-blog.github.io/main/data/...</code> — token <em>gerekmez</em>.<br>
-        <strong>Yazma (admin):</strong> GitHub REST API (<code>api.github.com/repos/...</code>) — <strong>Personal Access Token (classic, <code>repo</code> scope)</strong> gerekir. Token sadece bu tarayıcının <code>localStorage</code>'ında saklanır, asla repoya/koda yazılmaz.
+        <strong>Okuma (herkes / hoca):</strong> Token gerekmez, doğrudan GitHub'dan okunur.<br>
+        <strong>Yazma (admin / kardeş):</strong> Sadece bu repoya yetkili Fine-Grained Token (<code>github_pat_...</code>) gerekir. Token yalnızca bu tarayıcıda saklanır, asla koda veya repoya yazılmaz.
       </p>
       <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:1rem">
-        <strong>Repo:</strong> <code>Onii-sama-blog/Onii-sama-blog.github.io</code> (Public, <code>main</code> branch)<br>
-        <strong>URL:</strong> <code>https://Onii-sama-blog.github.io/</code>
+        <strong>Repo:</strong> <code>Onii-sama-blog/Onii-sama-blog.github.io</code> (Public, <code>main</code>)<br>
+        <strong>URL:</strong> <code>https://onii-sama-blog.github.io/</code>
       </div>
       <div class="form-group">
-        <label>GitHub Personal Access Token (classic, <code>repo</code> scope)</label>
-        <input type="password" id="gh-token-input" placeholder="ghp_xxxxxxxxxxxx" value="${hasToken ? '••••••••••••••••' : ''}" autocomplete="off">
+        <label>GitHub Fine-Grained Token (Contents: Read and write)</label>
+        <input type="password" id="gh-token-input" placeholder="github_pat_..." value="${hasToken ? '••••••••••••••••' : ''}" autocomplete="off">
         <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
-          <button class="btn btn-primary" onclick="saveGhToken()">Kaydet</button>
-          ${hasToken ? '<button class="btn btn-danger" onclick="clearGhToken()">Sil</button>' : ''}
+          <button class="btn btn-primary" onclick="saveGhToken()">Token Kaydet</button>
+          ${hasToken ? '<button class="btn btn-danger" onclick="clearGhToken()">Token Sil</button>' : ''}
         </div>
-        <p style="font-size:0.85rem;color:var(--muted);margin-top:0.5rem">Token: <code>Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token (classic) → repo scope</code></p>
       </div>
-      <button class="btn btn-secondary" onclick="initGitHubRepo()" ${!hasToken ? 'disabled style="opacity:0.5"' : ''}>Repo Yapısını Başlat (İlk kurulum: data/ klasörleri ve .gitkeep dosyaları)</button>
+      <button id="init-repo-btn" class="btn btn-secondary" onclick="initGitHubRepo()" ${!hasToken ? 'disabled style="opacity:0.5"' : ''}>Repo Yapısını Başlat / Verileri GitHub'a Eşitle</button>
       <hr style="border-color:var(--border);margin:1.5rem 0">
       <h4>Yedekleme</h4>
       <button class="btn btn-secondary" onclick="downloadBackup()">JSON Yedek İndir</button>
       <button class="btn btn-secondary" style="margin-left:0.5rem" onclick="document.getElementById('backup-input').click()">JSON Yedekten Geri Yükle</button>
-      <input type="file" id="backup-input" accept=".json" class="visually-hidden" onchange="restoreBackup">
+      <input type="file" id="backup-input" accept=".json" class="visually-hidden" onchange="restoreBackup(event)">
     </div>
   `;
 }
 
 function saveGhToken() {
   const token = $('#gh-token-input').value.trim();
-  if(!token) return toast('Token boş', 'error');
-  if(!token.startsWith('ghp_') && !token.startsWith('github_pat_')) return toast('Geçersiz token formatı (ghp_ veya github_pat_ ile başlamalı)', 'error');
+  if(!token || token.startsWith('••')) return toast('Lütfen gerçek token kodunu yapıştırın', 'error');
+  if(!token.startsWith('ghp_') && !token.startsWith('github_pat_')) return toast('Geçersiz token formatı (github_pat_ veya ghp_ ile başlamalı)', 'error');
   setGhToken(token);
-  toast('Token kaydedildi (localStorage)');
+  toast('Token tarayıcıya kaydedildi! Şimdi "Repo Yapısını Başlat" butonuna basabilirsiniz.');
   renderAdmin($('#app'));
 }
 
