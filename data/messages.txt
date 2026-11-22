@@ -1,0 +1,10 @@
+[
+  {
+    "id": "0b1eef89-ec5e-4da1-8dab-722f87b63db8",
+    "fromId": "31501c30-1227-43dd-be14-00cdefd87bec",
+    "toId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
+    "text": "Banımı kaldırmısın",
+    "createdAt": 1795348325951,
+    "read": false
+  }
+]
