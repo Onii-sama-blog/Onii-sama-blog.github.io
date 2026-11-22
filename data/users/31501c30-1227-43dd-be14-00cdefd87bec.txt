@@ -3,8 +3,9 @@
   "username": "Takip12",
   "passwordHash": "57677a391c157ee41db6963a6c39caf60f812e31dd7dc194a5c5e18d5dd72184",
   "role": "editor",
-  "bio": "",
+  "bio": "admine inat editör oluyorum",
   "avatar": "",
-  "website": "",
-  "createdAt": 1795345389931
+  "website": "https://onii-sama-blog.github.io/",
+  "createdAt": 1795345389931,
+  "websiteHistory": []
 }
