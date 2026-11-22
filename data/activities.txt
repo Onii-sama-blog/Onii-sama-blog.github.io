@@ -1,5 +1,17 @@
 [
   {
+    "id": "4a1f5223-2c75-485d-a6ec-ca4c3a4ab2c0",
+    "type": "profile_update",
+    "actorId": "5a554639-887c-4c35-b1d4-0482189860b1",
+    "actorName": "Dml35",
+    "actorRole": "author",
+    "targetUserId": null,
+    "postId": null,
+    "postTitle": "",
+    "summary": "Profil bilgilerini güncelledi.",
+    "createdAt": 1795373987458
+  },
+  {
     "id": "543744bd-b4cc-408b-86f0-5d6beaa5747f",
     "type": "profile_update",
     "actorId": "5a554639-887c-4c35-b1d4-0482189860b1",
