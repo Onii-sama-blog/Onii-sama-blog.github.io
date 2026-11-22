@@ -8,9 +8,10 @@
   "website": "https://onii-sama-blog.github.io/",
   "createdAt": 1795345389931,
   "websiteHistory": [],
-  "banned": true,
+  "banned": false,
   "flagged": true,
   "banReason": "yanlış kelimeler",
   "bannedAt": 1795347946780,
-  "unlockCode": "ONII-HG95-8T8G"
+  "unlockCode": "ONII-HG95-8T8G",
+  "unlockedAt": 1795348442985
 }
