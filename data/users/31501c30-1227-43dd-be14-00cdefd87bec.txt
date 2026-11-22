@@ -9,9 +9,9 @@
   "createdAt": 1795345389931,
   "websiteHistory": [],
   "banned": false,
-  "flagged": true,
-  "banReason": "test",
+  "flagged": false,
+  "banReason": "",
   "bannedAt": 1795348803229,
-  "unlockCode": "ONII-4753-74H9",
+  "unlockCode": "",
   "unlockedAt": 1795349020516
 }
