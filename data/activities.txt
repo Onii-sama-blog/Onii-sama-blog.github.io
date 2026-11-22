@@ -1,27 +1,15 @@
 [
   {
-    "id": "8cf66732-236c-44ec-9026-3cb4f98b2ea4",
-    "type": "post_edit",
-    "actorId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
-    "actorName": "Kob09",
-    "actorRole": "admin",
+    "id": "b39bf237-3938-4eb8-a985-209199c91620",
+    "type": "post_create",
+    "actorId": "5a554639-887c-4c35-b1d4-0482189860b1",
+    "actorName": "Dml35",
+    "actorRole": "author",
     "targetUserId": null,
-    "postId": "f0d9eb94-4d7a-49a7-99e6-1b5656719725",
-    "postTitle": "Hxııcg",
-    "summary": "\"Hxııcg\" başlıklı yazıyı düzenledi.",
-    "createdAt": 1795375057962
-  },
-  {
-    "id": "afd0c8a0-c8bd-4bab-852d-19140fa6ff90",
-    "type": "post_edit",
-    "actorId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
-    "actorName": "Kob09",
-    "actorRole": "admin",
-    "targetUserId": null,
-    "postId": "26398f10-73c3-473c-81a7-2bdfc2cdc78f",
-    "postTitle": "asdasda",
-    "summary": "\"asdasda\" başlıklı yazıyı düzenledi.",
-    "createdAt": 1795375032745
+    "postId": "188d2c3b-dc38-4d99-9ec7-97664305a068",
+    "postTitle": "khjk",
+    "summary": "\"khjk\" başlıklı yeni bir yazı taslak olarak kaydetti.",
+    "createdAt": 1795379278734
   },
   {
     "id": "4a1f5223-2c75-485d-a6ec-ca4c3a4ab2c0",
