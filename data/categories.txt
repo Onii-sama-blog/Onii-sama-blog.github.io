@@ -1,1 +1,7 @@
-[]
+[
+  "Genel",
+  "Teknoloji",
+  "Yaşam",
+  "Ödev",
+  "Tarih"
+]
