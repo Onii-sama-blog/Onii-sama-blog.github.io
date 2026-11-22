@@ -1,5 +1,17 @@
 [
   {
+    "id": "c9bf1ab6-091b-40be-8ad4-393b02eaa906",
+    "type": "post_delete",
+    "actorId": "31501c30-1227-43dd-be14-00cdefd87bec",
+    "actorName": "Takip12",
+    "actorRole": "editor",
+    "targetUserId": null,
+    "postId": null,
+    "postTitle": "Sssjsjs",
+    "summary": "\"Sssjsjs\" başlıklı yazıyı sildi.",
+    "createdAt": 1795348470125
+  },
+  {
     "id": "6c569049-866a-468f-9a9e-32e99e444a8c",
     "type": "post_delete",
     "actorId": "31501c30-1227-43dd-be14-00cdefd87bec",
