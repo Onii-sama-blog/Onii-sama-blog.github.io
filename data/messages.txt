@@ -6,5 +6,13 @@
     "text": "Banımı kaldırmısın",
     "createdAt": 1795348325951,
     "read": true
+  },
+  {
+    "id": "c3521620-61ea-4c2a-8db8-15f9ff96610b",
+    "fromId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
+    "toId": "31501c30-1227-43dd-be14-00cdefd87bec",
+    "text": "o içeriği kaldırsan olur",
+    "createdAt": 1795348383128,
+    "read": false
   }
 ]
