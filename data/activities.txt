@@ -1,5 +1,17 @@
 [
   {
+    "id": "431618bc-72f3-45fe-b005-ab52e5dac0fb",
+    "type": "ban_unlock",
+    "actorId": "31501c30-1227-43dd-be14-00cdefd87bec",
+    "actorName": "Takip12",
+    "actorRole": "editor",
+    "targetUserId": "31501c30-1227-43dd-be14-00cdefd87bec",
+    "postId": null,
+    "postTitle": "",
+    "summary": "Onay kodunu girerek banını kaldırdı.",
+    "createdAt": 1795349022962
+  },
+  {
     "id": "e6c494b6-efd9-4f89-a830-3259e24d0be9",
     "type": "user_ban",
     "actorId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
