@@ -1,0 +1,10 @@
+{
+  "id": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
+  "username": "Kob09",
+  "passwordHash": "4afd8ff57d26e7bf2f0e37be7fe20e8998ff45b3ba869b01b9e142ab7f58f89b",
+  "role": "admin",
+  "bio": "",
+  "avatar": "",
+  "website": "",
+  "createdAt": 1795314632928
+}
