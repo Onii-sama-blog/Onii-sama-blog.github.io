@@ -195,13 +195,8 @@ tr:hover td { background: var(--bg-elevated); }
 .pill-tab.active, .pill-tab:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); text-decoration: none; }
 .home-share-cta { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem; border-color: var(--accent-dim); padding: 1.1rem 1.35rem; }
 .home-share-cta-left { display: flex; align-items: center; gap: 0.85rem; min-width: 0; }
-.bottom-explore { margin-top: 3rem; border-top: 1px solid var(--border); background: var(--bg-elevated); padding: 1.1rem 0; width: 100%; }
-.bottom-explore-inner { display: flex; flex-direction: column; gap: 0.75rem; }
-.explore-slider { display: flex; align-items: center; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.25rem; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
-.explore-chip { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.95rem; border-radius: 999px; border: 1px solid var(--border); background: var(--card); color: var(--muted); font-size: 0.88rem; font-weight: 600; white-space: nowrap; flex-shrink: 0; transition: all var(--transition); }
-.explore-chip:hover, .explore-chip.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); text-decoration: none; }
-.explore-divider { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; margin: 0 0.25rem; }
-.footer { border-top: 1px solid var(--border); padding: 1.5rem 0; margin-top: 0; text-align: center; color: var(--muted); font-size: 0.9rem; }
+.section-title.section-bottom { margin-top: 2.5rem; margin-bottom: 0; }
+.footer { border-top: 1px solid var(--border); padding: 1.5rem 0; margin-top: 3rem; text-align: center; color: var(--muted); font-size: 0.9rem; }
 /* Blogger-tarzı Zoom-In & 3D Sayfa Çevirme Animasyonu */
 .post-stage { position: relative; max-width: 840px; margin: 0 auto; perspective: 1400px; }
 .post-sheet { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 2.25rem; box-shadow: 0 14px 40px rgba(0,0,0,0.22); transform-origin: center center; will-change: transform, opacity; }
@@ -311,7 +306,6 @@ code { word-break: break-all; }
 </div>
 </header>
 <main class="main" id="app"></main>
-<section class="bottom-explore" id="bottom-explore"></section>
 <footer class="footer"><div class="container" id="site-footer">Onii-sama blog</div></footer>
 <div class="toast-container" id="toast-container"></div>
 <script>
@@ -394,16 +388,21 @@ const saveState = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch(e){ console.error('Save failed',e); }
 };
+const DEFAULT_CATEGORIES = ['Genel', 'Teknoloji', 'Yaşam', 'Ödev'];
 const loadState = () => {
   try {
     const s = localStorage.getItem(STORAGE_KEY);
     if(s) state = {...state, ...JSON.parse(s)};
     if(!Array.isArray(state.activities)) state.activities = [];
     if(!Array.isArray(state.editRequests)) state.editRequests = [];
+    if(!Array.isArray(state.categories) || !state.categories.length) state.categories = [...DEFAULT_CATEGORIES];
+    if(!state.settings) state.settings = {};
+    if(!state.settings.proxyUrl) state.settings.proxyUrl = 'https://onii-blog-api.tm4349776.workers.dev';
   } catch(e){ console.error('Load failed',e); }
 };
 
 /* ==================== GITHUB PAGES API (Public Read / Token or Proxy Write) ==================== */
+let tempAuthOverride = null;
 function getGhToken() { return localStorage.getItem('gh_token') || ''; }
 function setGhToken(t) { if(t) localStorage.setItem('gh_token', t); else localStorage.removeItem('gh_token'); }
 function getProxyUrl() { return (state.settings?.proxyUrl || '').trim().replace(/\/+$/, ''); }
@@ -426,9 +425,10 @@ async function ghFetch(path, options = {}) {
   const token = getGhToken();
   const proxy = getProxyUrl();
 
-  // Ortak yazma sunucusu (Cloudflare Worker) ayarlıysa yazma işlemlerinde her zaman önce onu kullan
-  if(proxy && (method === 'PUT' || method === 'DELETE')) {
+  // Ortak yazma sunucusu (Cloudflare Worker) ayarlıysa GET/PUT/DELETE isteklerini önce onun üzerinden yap (403 rate limit aşımını önler)
+  if(proxy) {
     const cur = state.currentUser ? getUser(state.currentUser.id) : null;
+    const authObj = tempAuthOverride || (cur ? { username: cur.username, passwordHash: cur.passwordHash } : null);
     const r = await fetch(`${proxy}/gh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -436,15 +436,16 @@ async function ghFetch(path, options = {}) {
         method,
         path,
         payload: options.body ? JSON.parse(options.body) : undefined,
-        auth: cur ? { username: cur.username, passwordHash: cur.passwordHash } : null
+        auth: method === 'GET' ? undefined : authObj
       }),
       cache: 'no-store'
     });
-    if(!r.ok) {
+    if(r.ok) return r.json();
+    // Eğer eski Worker henüz GET desteklemiyorsa (403) GET isteklerinde doğrudan GitHub'a düş
+    if(!(method === 'GET' && r.status === 403)) {
       const err = await r.text();
       throw new Error(`Sunucu ${r.status}: ${err}`);
     }
-    return r.json();
   }
 
   const headers = { 'Accept': 'application/vnd.github.v3+json', ...(options.headers || {}) };
@@ -548,7 +549,8 @@ async function loadFromGitHub() {
       if(validUsers.length) state.users = validUsers;
       if(Array.isArray(commentsRaw)) state.comments = commentsRaw;
       if(Array.isArray(categoriesRaw) && categoriesRaw.length) state.categories = categoriesRaw;
-      if(settingsRaw) state.settings = { ...state.settings, ...settingsRaw };
+      else if(!Array.isArray(state.categories) || !state.categories.length) state.categories = [...DEFAULT_CATEGORIES];
+      if(settingsRaw) state.settings = { ...state.settings, ...settingsRaw, proxyUrl: settingsRaw.proxyUrl || state.settings.proxyUrl || 'https://onii-blog-api.tm4349776.workers.dev' };
       if(Array.isArray(activitiesRaw)) state.activities = activitiesRaw;
       if(Array.isArray(editRequestsRaw)) state.editRequests = editRequestsRaw;
       saveState();
@@ -810,27 +812,6 @@ function cleanupPostOverlays() {
   }
 }
 
-function renderBottomExplore(path, params) {
-  const box = $('#bottom-explore');
-  if(!box) return;
-  const norm = path === '' ? '/' : path;
-  const activeCat = (norm === '/category' || norm === '/categories') ? decodeURIComponent(params.get('name') || '') : '';
-  const cats = Array.isArray(state.categories) ? state.categories : [];
-  box.innerHTML = `
-    <div class="container bottom-explore-inner">
-      <div class="explore-slider" aria-label="Alt Gezinme ve Kategoriler">
-        <a href="#/" class="explore-chip ${norm === '/' ? 'active' : ''}">🏠 Anasayfa</a>
-        <a href="#/posts" class="explore-chip ${norm === '/posts' || norm === '/post' ? 'active' : ''}">📝 Tüm Yazılar</a>
-        <a href="#/categories" class="explore-chip ${(norm === '/categories' || norm === '/category') && !activeCat ? 'active' : ''}">🏷️ Kategoriler</a>
-        <a href="#/authors" class="explore-chip ${norm === '/authors' || norm === '/author' ? 'active' : ''}">👥 Kullanıcılar</a>
-        <a href="#/about" class="explore-chip ${norm === '/about' ? 'active' : ''}">ℹ️ Hakkında</a>
-        ${cats.length ? '<span class="explore-divider"></span>' : ''}
-        ${cats.map(c => `<a href="#/category?name=${encodeURIComponent(c)}" class="explore-chip ${activeCat === c ? 'active' : ''}">#${esc(c)}</a>`).join('')}
-      </div>
-    </div>
-  `;
-}
-
 function renderRoute(route) {
   currentRoute = route;
   cleanupPostOverlays();
@@ -838,7 +819,6 @@ function renderRoute(route) {
   const [path, query] = route.split('?');
   const params = new URLSearchParams(query || '');
   updateActiveNav(path);
-  renderBottomExplore(path, params);
   app.innerHTML = '';
   app.classList.remove('page-enter');
   void app.offsetWidth;
@@ -934,7 +914,7 @@ function renderHome(app) {
   if(recent.length) {
     const grid = el('div', {class:'post-grid'});
     recent.forEach(p => grid.append(createPostCard(p)));
-    section.append(el('h2', {class:'section-title'}, 'Son Yazılar'), grid);
+    section.append(grid, el('h2', {class:'section-title section-bottom'}, 'Son Yazılar'));
   }
   if(!featured && !recent.length) {
     section.append(el('p', {style:'text-align:center;color:var(--muted);margin-top:2rem'}, state.currentUser ? 'Henüz yayınlanmış yazı yok. Yukarıdaki "Yeni Yazı Paylaş" butonuna tıklayıp ilk yazını oluşturabilirsin!' : 'Henüz yayınlanmış yazı yok.'));
@@ -948,12 +928,12 @@ function renderPostsList(app) {
   const totalPages = Math.ceil(all.length / perPage);
   const posts = all.slice((page-1)*perPage, page*perPage);
   const section = el('div', {class:'container'});
-  section.append(el('h1', {class:'section-title'}, 'Tüm Yazılar'));
   const grid = el('div', {class:'post-grid'});
   posts.forEach(p => grid.append(createPostCard(p)));
   section.append(grid);
   if(totalPages > 1) section.append(renderPagination(page, totalPages, 'posts'));
   if(!posts.length) section.append(el('p', {style:'text-align:center;color:var(--muted);margin-top:2rem'}, 'Henüz yazı yok.'));
+  section.append(el('h1', {class:'section-title section-bottom'}, 'Tüm Yazılar'));
   app.append(section);
 }
 function flipToPost(targetId, direction = 'next') {
@@ -1119,13 +1099,13 @@ function renderPost(app, id) {
 function renderCategory(app, name) {
   const cat = decodeURIComponent(name || '');
   const posts = getPostsByCategory(cat);
+  const cats = (Array.isArray(state.categories) && state.categories.length) ? state.categories : DEFAULT_CATEGORIES;
   const section = el('div', {class:'container'});
-  section.append(el('h1', {class:'section-title'}, cat ? `Kategori: ${cat}` : 'Kategoriler'));
   if(!cat) {
     const grid = el('div', {style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem'});
-    state.categories.forEach(c => {
+    cats.forEach(c => {
       const count = getPostsByCategory(c).length;
-      grid.append(html(`<a href="#/category?name=${encodeURIComponent(c)}" class="card" style="text-align:center;padding:2rem;text-decoration:none"><h3>${c}</h3><p style="color:var(--muted)">${count} yazı</p></a>`));
+      grid.append(html(`<a href="#/category?name=${encodeURIComponent(c)}" class="card" style="text-align:center;padding:2rem;text-decoration:none"><h3>${esc(c)}</h3><p style="color:var(--muted)">${count} yazı</p></a>`));
     });
     section.append(grid);
   } else {
@@ -1134,6 +1114,7 @@ function renderCategory(app, name) {
     section.append(grid);
     if(!posts.length) section.append(el('p', {style:'text-align:center;color:var(--muted);margin-top:2rem'}, 'Bu kategoride yazı yok.'));
   }
+  section.append(el('h1', {class:'section-title section-bottom'}, cat ? `Kategori: ${cat}` : 'Kategoriler'));
   app.append(section);
 }
 function renderAuthor(app, id) {
@@ -1145,14 +1126,14 @@ function renderAuthor(app, id) {
     <div class="profile-header" style="margin-bottom:2rem">
       <div class="profile-avatar" style="width:100px;height:100px;font-size:2.5rem">${avatarHtml(author)}</div>
       <div>
-        <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap"><h1>${author.username}</h1>${roleBadge(author.role)}</div>
-        <p class="profile-bio">${author.bio || 'Bio yok'}</p>
+        <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap"><h1>${esc(author.username)}</h1>${roleBadge(author.role)}</div>
+        <p class="profile-bio">${esc(author.bio || 'Bio yok')}</p>
         ${formatWebsiteLink(author.website)}
         <p style="color:var(--muted);font-size:0.9rem;margin-top:0.35rem">${posts.length} yazı • ${fmtDate(author.createdAt)} itibarıyla üye</p>
       </div>
     </div>
-    <h2 class="section-title">Yazıları</h2>
     <div class="post-grid" id="author-posts"></div>
+    <h2 class="section-title section-bottom">Yazıları</h2>
   `));
   const grid = $('#author-posts', section);
   posts.forEach(p => grid.append(createPostCard(p)));
@@ -1161,24 +1142,24 @@ function renderAuthor(app, id) {
 }
 function renderAuthorsList(app) {
   const section = el('div', {class:'container'});
-  section.append(el('h1', {class:'section-title'}, 'Kullanıcılar'));
   const grid = el('div', {style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem'});
   state.users.forEach(u => {
     const count = getUserPosts(u.id).filter(p => p.status==='published').length;
-    grid.append(html(`<a href="#/author?id=${u.id}" class="card" style="text-align:center;padding:2rem;text-decoration:none"><div class="profile-avatar" style="width:72px;height:72px;font-size:1.75rem;margin:0 auto 1rem">${avatarHtml(u)}</div><h3 style="margin-bottom:0.4rem">${u.username}</h3><div style="margin-bottom:0.5rem">${roleBadge(u.role)}</div><p style="color:var(--muted);font-size:0.9rem">${count} yazı</p></a>`));
+    grid.append(html(`<a href="#/author?id=${u.id}" class="card" style="text-align:center;padding:2rem;text-decoration:none"><div class="profile-avatar" style="width:72px;height:72px;font-size:1.75rem;margin:0 auto 1rem">${avatarHtml(u)}</div><h3 style="margin-bottom:0.4rem">${esc(u.username)}</h3><div style="margin-bottom:0.5rem">${roleBadge(u.role)}</div><p style="color:var(--muted);font-size:0.9rem">${count} yazı</p></a>`));
   });
   section.append(grid);
   if(!state.users.length) section.append(el('p', {style:'text-align:center;color:var(--muted);margin-top:2rem'}, 'Henüz kayıtlı kullanıcı yok.'));
+  section.append(el('h1', {class:'section-title section-bottom'}, 'Kullanıcılar'));
   app.append(section);
 }
 function renderAbout(app) {
   const section = el('div', {class:'container', style:'max-width:700px'});
   section.append(html(`
-    <h1 class="section-title">Hakkında</h1>
-    <div class="card" style="margin-top:1rem">
-      <p style="margin-bottom:1rem">${state.settings.description || 'Onii-sama blog — ödev ve yazılar için sade, hızlı ve reklamsız blog platformu.'}</p>
+    <div class="card">
+      <p style="margin-bottom:1rem">${esc(state.settings.description || 'Onii-sama blog — ödev ve yazılar için sade, hızlı ve reklamsız blog platformu.')}</p>
       <p style="color:var(--muted)">Tüm yazılar doğrudan GitHub Pages üzerinden yayınlanır.</p>
     </div>
+    <h1 class="section-title section-bottom">Hakkında</h1>
   `));
   app.append(section);
 }
@@ -1346,6 +1327,7 @@ function renderProfile(app) {
       if(userIdx >= 0) {
         if(newpass && newpass !== confirmpass) return toast('Şifreler eşleşmiyor', 'error');
         if(saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Kaydediliyor...'; }
+        const prevPasswordHash = state.users[userIdx].passwordHash;
         state.users[userIdx].bio = bio;
         state.users[userIdx].website = website;
         const prevHist = Array.isArray(state.users[userIdx].websiteHistory) ? state.users[userIdx].websiteHistory : [];
@@ -1363,10 +1345,13 @@ function renderProfile(app) {
         if(headerWeb) headerWeb.innerHTML = formatWebsiteLink(website);
         if(hasWriteAccess()) {
           try {
+            if(newpass) tempAuthOverride = { username: state.users[userIdx].username, passwordHash: prevPasswordHash };
             await saveUserToGitHub(state.users[userIdx]);
-            await logActivity('profile_update', { summary: 'Profil bilgilerini güncelledi.' });
-            toast('Profil ve fotoğraf GitHub\'a kaydedildi!');
+            tempAuthOverride = null;
+            await logActivity('profile_update', { summary: newpass ? 'Profilini ve şifresini güncelledi.' : 'Profil bilgilerini güncelledi.' });
+            toast(newpass ? 'Profil ve yeni şifre GitHub\'a kaydedildi!' : 'Profil ve fotoğraf GitHub\'a kaydedildi!');
           } catch(err) {
+            tempAuthOverride = null;
             toast('GitHub kaydetme hatası: ' + err.message, 'error');
           }
         } else {
@@ -2186,25 +2171,33 @@ function openUserModal(id=null) {
 }
 async function saveUser(id) {
   const fd = new FormData($('#user-form'));
-  const username = fd.get('username'), role = fd.get('role'), bio = fd.get('bio'), website = fd.get('website'), password = fd.get('password');
+  const username = (fd.get('username') || '').trim(), role = fd.get('role'), bio = fd.get('bio'), website = (fd.get('website') || '').trim(), password = fd.get('password');
   let targetUser = null;
+  let prevSelfHash = null;
   if(id) {
     const u = getUser(id); if(!u) return;
+    if(password && u.id === state.currentUser.id) prevSelfHash = u.passwordHash;
     u.role = role; u.bio = bio; u.website = website;
     if(password) u.passwordHash = await hashPass(password);
     if(u.id === state.currentUser.id) state.currentUser = {...u, passwordHash:undefined};
     targetUser = u;
   } else {
+    if(!username || !password) return toast('Kullanıcı adı ve şifre zorunlu', 'error');
     if(state.users.some(x=>x.username===username)) return toast('Kullanıcı adı alınmış', 'error');
-    const res = await register(username, password, role);
-    if(!res.ok) return;
-    const u = getUser(res.user.id); u.bio = bio; u.website = website;
-    targetUser = u;
+    const user = { id:uid(), username, passwordHash:await hashPass(password), role, bio, avatar:'', website, createdAt:Date.now() };
+    state.users.push(user);
+    targetUser = user;
   }
   saveState();
   try {
+    if(prevSelfHash) tempAuthOverride = { username: state.currentUser.username, passwordHash: prevSelfHash };
     if(targetUser) await saveUserToGitHub(targetUser);
-  } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); }
+    tempAuthOverride = null;
+    toast(id ? 'Kullanıcı ve şifre güncellendi!' : 'Yeni kullanıcı oluşturuldu!');
+  } catch(e) {
+    tempAuthOverride = null;
+    toast('GitHub kaydetme hatası: ' + e.message, 'error');
+  }
   if(targetUser) {
     await logActivity(id ? 'user_update' : 'user_create', {
       summary: id ? `"${targetUser.username}" kullanıcısını güncelledi (Rol: ${targetUser.role}).` : `"${targetUser.username}" kullanıcısını oluşturdu (Rol: ${targetUser.role}).`,
