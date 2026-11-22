@@ -1,5 +1,17 @@
 [
   {
+    "id": "d019a186-64ed-432a-93d5-6d932e86a44f",
+    "type": "edit_request_create",
+    "actorId": "31501c30-1227-43dd-be14-00cdefd87bec",
+    "actorName": "Takip12",
+    "actorRole": "editor",
+    "targetUserId": "5a554639-887c-4c35-b1d4-0482189860b1",
+    "postId": "188d2c3b-dc38-4d99-9ec7-97664305a068",
+    "postTitle": "dijitalleşmenin tarihe olumlu ve olumsuz etkileri",
+    "summary": "\"dijitalleşmenin tarihe olumlu ve olumsuz etkileri\" yazısı için düzenleme isteği gönderdi.",
+    "createdAt": 1795383588175
+  },
+  {
     "id": "4bd7b231-9262-4adf-848d-5cd7f2b225fb",
     "type": "post_edit",
     "actorId": "5a554639-887c-4c35-b1d4-0482189860b1",
