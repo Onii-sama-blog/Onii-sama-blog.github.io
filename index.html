@@ -184,6 +184,31 @@ tr:hover td { background: var(--bg-elevated); }
 .setup-step:last-child::after { display: none; }
 .setup-step-text strong { display: block; margin-bottom: 0.25rem; }
 .setup-step-text { color: var(--muted); font-size: 0.95rem; }
+.badge-pending { background: #ffa50222; color: var(--warning); }
+.badge-rejected { background: #ff475722; color: var(--danger); }
+.nav-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 0.7rem; font-weight: 700; margin-left: 0.35rem; }
+.quick-compose { margin-bottom: 2rem; border-color: var(--accent-dim); }
+.quick-compose-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.quick-compose-user { display: flex; align-items: center; gap: 0.75rem; }
+.quick-compose textarea { min-height: 110px; resize: vertical; }
+.quick-compose-extras { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed var(--border); }
+.quick-compose-actions { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap; }
+.sync-banner { background: #ffa50218; border: 1px solid var(--warning); border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.activity-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.activity-item { display: flex; align-items: flex-start; gap: 0.85rem; padding: 1rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.activity-icon { width: 38px; height: 38px; border-radius: 50%; background: var(--accent-dim); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
+.activity-body { flex: 1; min-width: 0; }
+.activity-meta { font-size: 0.8rem; color: var(--muted); margin-top: 0.2rem; display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+@media (max-width: 768px) { .diff-grid { grid-template-columns: 1fr; } }
+.diff-box { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1rem; }
+.diff-box.proposed { border-color: var(--accent); }
+.diff-box h4 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.5rem; }
+.diff-box.proposed h4 { color: var(--accent); }
+.diff-content { white-space: pre-wrap; word-break: break-word; font-size: 0.9rem; max-height: 260px; overflow-y: auto; line-height: 1.6; }
+.pill-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+.pill-tab { padding: 0.45rem 0.95rem; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--muted); font-size: 0.85rem; font-weight: 600; transition: all var(--transition); }
+.pill-tab.active, .pill-tab:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
 </style>
 </head>
 <body>
@@ -214,7 +239,8 @@ tr:hover td { background: var(--bg-elevated); }
 /* ==================== STATE & CONFIG ==================== */
 const STORAGE_KEY = 'blog_data_v1';
 let state = {
-  posts: [], users: [], comments: [], categories: ['Genel', 'Teknoloji', 'Yaşam', 'Ödev'],
+  posts: [], users: [], comments: [], activities: [], editRequests: [],
+  categories: ['Genel', 'Teknoloji', 'Yaşam', 'Ödev'],
   settings: { title: 'Onii-sama blog', description: 'Onii-sama blog - Kardeşim için', footer: '', social: {} },
   currentUser: null
 };
@@ -225,12 +251,21 @@ const GH_API = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents`;
 const GH_RAW = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}`;
 let currentRoute = '/';
 let editingPostId = null;
+let proposingPostId = null;
 let editingUserId = null;
 let uploadImageBase64 = null;
 
 /* ==================== UTILITIES ==================== */
 const $ = (sel, ctx=document) => ctx.querySelector(sel);
 const $$ = (sel, ctx=document) => [...ctx.querySelectorAll(sel)];
+const esc = (str) => String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const panelBase = () => state.currentUser?.role === 'admin' ? '#/admin' : '#/settings';
+const getPendingIncomingRequests = (u = state.currentUser) => {
+  if(!u) return [];
+  const reqs = Array.isArray(state.editRequests) ? state.editRequests : [];
+  if(u.role === 'admin') return reqs.filter(r => r.status === 'pending');
+  return reqs.filter(r => r.status === 'pending' && r.authorId === u.id);
+};
 const el = (tag, attrs={}, children=[]) => {
   const e = document.createElement(tag);
   Object.entries(attrs).forEach(([k,v]) => k.startsWith('on') ? e.addEventListener(k.slice(2).toLowerCase(), v) : e.setAttribute(k,v));
@@ -261,7 +296,16 @@ const applySiteMeta = () => {
 const setNav = () => {
   const u = state.currentUser;
   $('#nav-login')?.classList.toggle('hidden', !!u);
-  $('#nav-admin')?.classList.toggle('hidden', !u);
+  const navAdmin = $('#nav-admin');
+  if(navAdmin) {
+    navAdmin.classList.toggle('hidden', !u);
+    if(u) {
+      const isAdmin = u.role === 'admin';
+      const pendingCount = getPendingIncomingRequests(u).length;
+      navAdmin.setAttribute('href', isAdmin ? '#/admin' : '#/settings');
+      navAdmin.innerHTML = `${isAdmin ? 'Admin Paneli' : 'Ayarlar'}${pendingCount ? `<span class="nav-badge" title="${pendingCount} bekleyen düzenleme isteği">${pendingCount}</span>` : ''}`;
+    }
+  }
   $('#nav-profile')?.classList.toggle('hidden', !u);
   $('#logout-btn')?.classList.toggle('hidden', !u);
   applySiteMeta();
@@ -271,11 +315,20 @@ const saveState = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch(e){ console.error('Save failed',e); }
 };
-const loadState = () => { try { const s = localStorage.getItem(STORAGE_KEY); if(s) state = {...state, ...JSON.parse(s)}; } catch(e){ console.error('Load failed',e); } };
+const loadState = () => {
+  try {
+    const s = localStorage.getItem(STORAGE_KEY);
+    if(s) state = {...state, ...JSON.parse(s)};
+    if(!Array.isArray(state.activities)) state.activities = [];
+    if(!Array.isArray(state.editRequests)) state.editRequests = [];
+  } catch(e){ console.error('Load failed',e); }
+};
 
-/* ==================== GITHUB PAGES API (Public Read / Token Write) ==================== */
+/* ==================== GITHUB PAGES API (Public Read / Token or Proxy Write) ==================== */
 function getGhToken() { return localStorage.getItem('gh_token') || ''; }
 function setGhToken(t) { if(t) localStorage.setItem('gh_token', t); else localStorage.removeItem('gh_token'); }
+function getProxyUrl() { return (state.settings?.proxyUrl || '').trim().replace(/\/+$/, ''); }
+function hasWriteAccess() { return !!(getGhToken() || getProxyUrl()); }
 function utf8ToBase64(str) {
   const bytes = new TextEncoder().encode(str);
   let bin = '';
@@ -290,7 +343,31 @@ function base64ToUtf8(b64) {
 }
 
 async function ghFetch(path, options = {}) {
+  const method = (options.method || 'GET').toUpperCase();
   const token = getGhToken();
+  const proxy = getProxyUrl();
+
+  // Eğer ortak yazma sunucusu (Cloudflare Worker) ayarlıysa ve yerel token yoksa (veya yazma isteğiyse) proxy üzerinden git
+  if(proxy && (method === 'PUT' || method === 'DELETE') && !token) {
+    const cur = state.currentUser ? getUser(state.currentUser.id) : null;
+    const r = await fetch(`${proxy}/gh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        method,
+        path,
+        payload: options.body ? JSON.parse(options.body) : undefined,
+        auth: cur ? { username: cur.username, passwordHash: cur.passwordHash } : null
+      }),
+      cache: 'no-store'
+    });
+    if(!r.ok) {
+      const err = await r.text();
+      throw new Error(`Sunucu ${r.status}: ${err}`);
+    }
+    return r.json();
+  }
+
   const headers = { 'Accept': 'application/vnd.github.v3+json', ...(options.headers || {}) };
   if(options.body) headers['Content-Type'] = 'application/json';
   if(token) headers['Authorization'] = `Bearer ${token}`;
@@ -360,12 +437,14 @@ async function ghReadJson(path, fallback = null) {
 
 async function loadFromGitHub() {
   try {
-    const [postsFiles, usersFiles, commentsRaw, categoriesRaw, settingsRaw] = await Promise.all([
+    const [postsFiles, usersFiles, commentsRaw, categoriesRaw, settingsRaw, activitiesRaw, editRequestsRaw] = await Promise.all([
       ghListDir('data/posts'),
       ghListDir('data/users'),
       ghReadJson('data/comments.txt', null),
       ghReadJson('data/categories.txt', null),
-      ghReadJson('data/settings.txt', null)
+      ghReadJson('data/settings.txt', null),
+      ghReadJson('data/activities.txt', null),
+      ghReadJson('data/edit_requests.txt', null)
     ]);
 
     const posts = await Promise.all(postsFiles.map(f => ghReadJson(`data/posts/${f}`, null)));
@@ -374,11 +453,17 @@ async function loadFromGitHub() {
     const validPosts = posts.filter(Boolean);
     const validUsers = users.filter(Boolean);
     if(validUsers.length || validPosts.length || settingsRaw) {
-      state.posts = validPosts;
+      // Yerel cihazda henüz GitHub'a gönderilmemiş (_unsynced) yazıları koru
+      const localUnsynced = (state.posts || []).filter(p => p && p._unsynced);
+      const remoteIds = new Set(validPosts.map(p => p.id));
+      const mergedPosts = [...localUnsynced.filter(p => !remoteIds.has(p.id)), ...validPosts];
+      state.posts = mergedPosts;
       if(validUsers.length) state.users = validUsers;
       if(Array.isArray(commentsRaw)) state.comments = commentsRaw;
       if(Array.isArray(categoriesRaw) && categoriesRaw.length) state.categories = categoriesRaw;
       if(settingsRaw) state.settings = { ...state.settings, ...settingsRaw };
+      if(Array.isArray(activitiesRaw)) state.activities = activitiesRaw;
+      if(Array.isArray(editRequestsRaw)) state.editRequests = editRequestsRaw;
       saveState();
     }
     return true;
@@ -389,38 +474,101 @@ async function loadFromGitHub() {
 }
 
 async function savePostToGitHub(post) {
-  const token = getGhToken();
-  if(!token) throw new Error('GitHub token gerekli (Admin → Depolama)');
-  return ghPutFile(`data/posts/${post.id}.txt`, post, `Update post ${post.id}`);
+  if(!hasWriteAccess()) throw new Error('Yazma bağlantısı yok (Yönetici → Depolama / Token ayarlamalı)');
+  const cleanPost = { ...post };
+  delete cleanPost._unsynced;
+  const res = await ghPutFile(`data/posts/${post.id}.txt`, cleanPost, `Update post ${post.id}`);
+  delete post._unsynced;
+  saveState();
+  return res;
 }
 
 async function saveUserToGitHub(user) {
-  const token = getGhToken();
-  if(!token) throw new Error('GitHub token gerekli (Admin → Depolama)');
+  if(!hasWriteAccess()) throw new Error('Yazma bağlantısı yok (Yönetici → Depolama / Token ayarlamalı)');
   return ghPutFile(`data/users/${user.id}.txt`, user, `Update user ${user.id}`);
 }
 
 async function saveSettingsToGitHub() {
-  const token = getGhToken();
-  if(!token) throw new Error('GitHub token gerekli (Admin → Depolama)');
+  if(!hasWriteAccess()) throw new Error('Yazma bağlantısı yok (Yönetici → Depolama / Token ayarlamalı)');
   return ghPutFile('data/settings.txt', state.settings, 'Update settings');
 }
 
 async function saveCategoriesToGitHub() {
-  const token = getGhToken();
-  if(!token) throw new Error('GitHub token gerekli (Admin → Depolama)');
+  if(!hasWriteAccess()) throw new Error('Yazma bağlantısı yok (Yönetici → Depolama / Token ayarlamalı)');
   return ghPutFile('data/categories.txt', state.categories, 'Update categories');
 }
 
 async function saveCommentsToGitHub() {
-  const token = getGhToken();
-  if(!token) throw new Error('GitHub token gerekli (Admin → Depolama)');
+  if(!hasWriteAccess()) throw new Error('Yazma bağlantısı yok (Yönetici → Depolama / Token ayarlamalı)');
   return ghPutFile('data/comments.txt', state.comments, 'Update comments');
 }
 
+async function saveActivitiesToGitHub() {
+  if(!hasWriteAccess()) return;
+  return ghPutFile('data/activities.txt', state.activities, 'Update activities');
+}
+
+async function saveEditRequestsToGitHub() {
+  if(!hasWriteAccess()) throw new Error('Yazma bağlantısı yok (Yönetici → Depolama / Token ayarlamalı)');
+  return ghPutFile('data/edit_requests.txt', state.editRequests, 'Update edit requests');
+}
+
+async function logActivity(type, { summary, postId = null, postTitle = '', targetUserId = null } = {}) {
+  const u = state.currentUser;
+  if(!u) return;
+  if(!Array.isArray(state.activities)) state.activities = [];
+  state.activities.unshift({
+    id: uid(),
+    type,
+    actorId: u.id,
+    actorName: u.username,
+    actorRole: u.role,
+    targetUserId,
+    postId,
+    postTitle,
+    summary,
+    createdAt: Date.now()
+  });
+  state.activities = state.activities.slice(0, 300);
+  saveState();
+  if(hasWriteAccess()) {
+    try { await saveActivitiesToGitHub(); } catch(e) { console.warn('Activity sync failed:', e); }
+  }
+}
+
+async function syncUnsyncedPosts() {
+  if(!hasWriteAccess()) {
+    if(state.currentUser?.role === 'admin') {
+      toast('Eşitlemek için önce Admin Paneli → Depolama / Token ayarını yapın', 'warning');
+      navigate('#/admin?tab=storage');
+    } else {
+      toast('GitHub yazma bağlantısı henüz yönetici tarafından ayarlanmamış.', 'warning');
+    }
+    return;
+  }
+  const unsynced = state.posts.filter(p => p._unsynced);
+  if(!unsynced.length) {
+    toast('Tüm yazılar zaten GitHub ile eşitlenmiş!');
+    return;
+  }
+  let okCount = 0;
+  for(const p of unsynced) {
+    try {
+      await savePostToGitHub(p);
+      okCount++;
+    } catch(e) {
+      toast(`"${p.title}" eşitlenemedi: ` + e.message, 'error');
+    }
+  }
+  if(okCount) {
+    try { await saveActivitiesToGitHub(); } catch {}
+    toast(`${okCount} yazı GitHub'a eşitlendi! Artık tüm cihazlarda görünecek.`);
+    renderRoute(currentRoute);
+  }
+}
+
 async function deletePostFromGitHub(id) {
-  const token = getGhToken();
-  if(!token) throw new Error('GitHub token gerekli (Admin → Depolama)');
+  if(!hasWriteAccess()) throw new Error('Yazma bağlantısı yok (Yönetici → Depolama / Token ayarlamalı)');
   const path = `data/posts/${id}.txt`;
   const existing = await ghGetFile(path);
   if(!existing) return;
@@ -428,8 +576,7 @@ async function deletePostFromGitHub(id) {
 }
 
 async function deleteUserFromGitHub(id) {
-  const token = getGhToken();
-  if(!token) throw new Error('GitHub token gerekli (Admin → Depolama)');
+  if(!hasWriteAccess()) throw new Error('Yazma bağlantısı yok (Yönetici → Depolama / Token ayarlamalı)');
   const path = `data/users/${id}.txt`;
   const existing = await ghGetFile(path);
   if(!existing) return;
@@ -439,24 +586,29 @@ async function deleteUserFromGitHub(id) {
 async function initGitHubRepo() {
   const btn = $('#init-repo-btn');
   try {
-    const token = getGhToken();
-    if(!token) return toast('Önce GitHub token girip Kaydet butonuna basın', 'error');
-    if(btn) { btn.disabled = true; btn.textContent = 'Repo başlatılıyor...'; }
+    if(!hasWriteAccess()) return toast('Önce GitHub Token veya Ortak Yazma Sunucusu kaydedin', 'error');
+    if(btn) { btn.disabled = true; btn.textContent = 'Eşitleniyor...'; }
     await ghPutFile('data/settings.txt', state.settings, 'Init/sync settings');
     await ghPutFile('data/categories.txt', state.categories, 'Init/sync categories');
     await ghPutFile('data/comments.txt', state.comments, 'Init/sync comments');
+    await ghPutFile('data/activities.txt', state.activities || [], 'Init/sync activities');
+    await ghPutFile('data/edit_requests.txt', state.editRequests || [], 'Init/sync edit requests');
     await ghPutFile('data/posts/.gitkeep', '', 'Init posts dir');
     await ghPutFile('data/users/.gitkeep', '', 'Init users dir');
     for(const u of state.users) {
       await ghPutFile(`data/users/${u.id}.txt`, u, `Sync user ${u.username}`);
     }
     for(const p of state.posts) {
-      await ghPutFile(`data/posts/${p.id}.txt`, p, `Sync post ${p.id}`);
+      const cleanPost = { ...p };
+      delete cleanPost._unsynced;
+      await ghPutFile(`data/posts/${p.id}.txt`, cleanPost, `Sync post ${p.id}`);
+      delete p._unsynced;
     }
-    toast('Repo yapısı oluşturuldu ve mevcut hesap/veriler GitHub\'a aktarıldı!');
+    saveState();
+    toast('Tüm veriler ve yerel yazılar GitHub\'a eşitlendi!');
   } catch(e) {
     console.error(e);
-    toast('Repo başlatma hatası: ' + e.message, 'error');
+    toast('Eşitleme hatası: ' + e.message, 'error');
   } finally {
     if(btn) { btn.disabled = false; btn.textContent = 'Repo Yapısını Başlat / Verileri GitHub\'a Eşitle'; }
   }
@@ -555,6 +707,7 @@ function updateActiveNav(path) {
       (href === '/posts' && (norm === '/posts' || norm === '/post')) ||
       (href === '/categories' && (norm === '/categories' || norm === '/category')) ||
       (href === '/authors' && (norm === '/authors' || norm === '/author')) ||
+      ((href === '/admin' || href === '/settings') && (norm === '/admin' || norm === '/settings')) ||
       (href !== '/' && href === norm);
     a.classList.toggle('active', match);
   });
@@ -574,7 +727,7 @@ function renderRoute(route) {
   if(path === '/setup') return renderSetup(app);
   if(path === '/login') return renderLogin(app);
   if(path === '/register') return renderRegister(app);
-  if(path === '/admin') return renderAdmin(app);
+  if(path === '/admin' || path === '/settings') return renderPanel(app, path);
   if(path === '/profile') return renderProfile(app);
   if(path === '/post') return renderPost(app, params.get('id'));
   if(path === '/category' || path === '/categories') return renderCategory(app, params.get('name'));
@@ -586,12 +739,149 @@ function renderRoute(route) {
   app.append(html(`<div class="card" style="text-align:center;padding:3rem"><h2>Sayfa bulunamadı</h2><a href="#/" class="btn btn-primary" style="margin-top:1rem">Anasayfa</a></div>`));
 }
 
+function buildUnsyncedBanner() {
+  if(!state.currentUser) return null;
+  const unsynced = state.posts.filter(p => p._unsynced);
+  if(!unsynced.length) return null;
+  const canWrite = hasWriteAccess();
+  const isAdmin = state.currentUser.role === 'admin';
+  return html(`
+    <div class="sync-banner">
+      <div>
+        <strong>⚠️ Bu cihazda GitHub'a gönderilmemiş ${unsynced.length} yazı var</strong>
+        <p style="font-size:0.88rem;color:var(--muted);margin-top:0.2rem">
+          ${canWrite
+            ? 'Yazıların diğer cihazlarda (PC/mobil) görünmesi için GitHub\'a eşitleyin.'
+            : (isAdmin
+                ? 'Yazma bağlantısı aktif değil; Admin Paneli → Depolama / Token sekmesinden token veya ortak yazma sunucusu ayarlayın.'
+                : 'Yazma bağlantısı yönetici tarafından henüz ayarlanmamış; bu yüzden yazı şimdilik sadece bu cihazda duruyor.')}
+        </p>
+      </div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+        ${canWrite
+          ? '<button class="btn btn-primary" onclick="syncUnsyncedPosts()">GitHub\'a Eşitle</button>'
+          : (isAdmin ? '<a href="#/admin?tab=storage" class="btn btn-primary">Depolama / Token Ayarla</a>' : '')}
+      </div>
+    </div>
+  `);
+}
+
 /* ==================== PAGES ==================== */
 function renderHome(app) {
-  const featured = getPublishedPosts()[0];
-  const recent = getPublishedPosts().slice(1, 7);
+  const published = getPublishedPosts();
+  const featured = published[0];
+  const recent = published.slice(1, 7);
   app.innerHTML = '';
   const section = el('div', {class:'container'});
+
+  const banner = buildUnsyncedBanner();
+  if(banner) section.append(banner);
+
+  if(state.currentUser) {
+    const u = state.currentUser;
+    let quickCoverBase64 = '';
+    const composer = html(`
+      <section class="card quick-compose">
+        <div class="quick-compose-head">
+          <div class="quick-compose-user">
+            <div class="comment-avatar">${avatarHtml(u)}</div>
+            <div>
+              <strong>Hızlı Blog Paylaş</strong>
+              <div style="font-size:0.82rem;color:var(--muted)">${esc(u.username)} olarak yeni yazı yayınla</div>
+            </div>
+          </div>
+          <a href="${panelBase()}?tab=myposts&new=1" class="btn btn-secondary" style="padding:0.45rem 0.9rem;font-size:0.85rem">Tam Editör</a>
+        </div>
+        <form id="home-quick-post-form">
+          <div class="form-row">
+            <div class="form-group" style="margin-bottom:0.75rem">
+              <input id="quick-post-title" placeholder="Yazı başlığı..." required>
+            </div>
+            <div class="form-group" style="margin-bottom:0.75rem;display:flex;gap:0.5rem">
+              <select id="quick-post-category" style="flex:1">${state.categories.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select>
+              <select id="quick-post-status" style="width:135px">
+                <option value="published">Yayınla</option>
+                <option value="draft">Taslak</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <textarea id="quick-post-content" placeholder="Aklındakileri yaz... (Markdown desteklenir: **kalın**, *italik*, ## başlık)" required></textarea>
+          </div>
+          <div class="quick-compose-extras hidden" id="quick-compose-extras">
+            <div class="form-row">
+              <div class="form-group" style="margin-bottom:0.5rem">
+                <label style="font-size:0.85rem">Etiketler (virgülle ayırın)</label>
+                <input id="quick-post-tags" placeholder="ödev, yazılım, günlük">
+              </div>
+              <div class="form-group" style="margin-bottom:0.5rem">
+                <label style="font-size:0.85rem">Kapak Görseli (isteğe bağlı, max 2MB)</label>
+                <input type="file" id="quick-post-cover" accept="image/*">
+              </div>
+            </div>
+          </div>
+          <div class="quick-compose-actions">
+            <button type="button" class="btn btn-ghost" id="quick-extras-toggle" style="padding:0.45rem 0.75rem;font-size:0.85rem">+ Etiket / Kapak Görseli</button>
+            <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+              ${!hasWriteAccess() ? (u.role === 'admin' ? `<a href="#/admin?tab=storage" style="font-size:0.8rem;color:var(--warning)">⚠️ Token / Sunucu ayarlanmadı (yerel kaydolur)</a>` : `<span style="font-size:0.8rem;color:var(--warning)">⚠️ Yazma bağlantısı kapalı (yerel kaydolur)</span>`) : ''}
+              <button type="submit" class="btn btn-primary" id="quick-post-submit">Paylaş</button>
+            </div>
+          </div>
+        </form>
+      </section>
+    `);
+    section.append(composer);
+    $('#quick-extras-toggle', composer).addEventListener('click', () => {
+      const box = $('#quick-compose-extras', composer);
+      const hidden = box.classList.toggle('hidden');
+      $('#quick-extras-toggle', composer).textContent = hidden ? '+ Etiket / Kapak Görseli' : '− Seçenekleri Gizle';
+    });
+    $('#quick-post-cover', composer).addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if(!file) { quickCoverBase64 = ''; return; }
+      if(file.size > 2 * 1024 * 1024) { e.target.value = ''; return toast('Dosya 2MB\'dan büyük olamaz', 'error'); }
+      const reader = new FileReader();
+      reader.onload = ev => { quickCoverBase64 = ev.target.result; };
+      reader.readAsDataURL(file);
+    });
+    $('#home-quick-post-form', composer).addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = $('#quick-post-title', composer).value.trim();
+      const content = $('#quick-post-content', composer).value.trim();
+      const category = $('#quick-post-category', composer).value;
+      const status = $('#quick-post-status', composer).value;
+      const tags = ($('#quick-post-tags', composer)?.value || '').split(',').map(t=>t.trim()).filter(Boolean);
+      if(!title || !content) return toast('Başlık ve içerik zorunlu', 'error');
+      const submitBtn = $('#quick-post-submit', composer);
+      submitBtn.disabled = true; submitBtn.textContent = 'Paylaşılıyor...';
+      const now = Date.now();
+      const post = {
+        id: uid(), title, content, excerpt: '', category, tags, status,
+        coverImage: quickCoverBase64 || null,
+        authorId: u.id, createdAt: now, updatedAt: now
+      };
+      state.posts.unshift(post);
+      saveState();
+      try {
+        await savePostToGitHub(post);
+        await logActivity('post_create', {
+          summary: `"${post.title}" başlıklı yeni bir yazı ${status === 'published' ? 'paylaştı' : 'taslak olarak kaydetti'}.`,
+          postId: post.id, postTitle: post.title
+        });
+        toast(status === 'published' ? 'Yazı yayınlandı ve GitHub\'a kaydedildi!' : 'Taslak GitHub\'a kaydedildi!');
+      } catch(err) {
+        post._unsynced = true;
+        saveState();
+        await logActivity('post_create', {
+          summary: `"${post.title}" başlıklı yazıyı yerel cihaza kaydetti (GitHub senkronizasyonu bekliyor).`,
+          postId: post.id, postTitle: post.title
+        });
+        toast('Yazı sadece bu cihaza kaydedildi! Diğer cihazlarda görünmesi için Depolama sekmesinden GitHub Token girin.', 'warning');
+      }
+      renderHome(app);
+    });
+  }
+
   if(featured) {
     const card = el('article', {class:'card post-card featured', style:'margin-bottom:2rem'});
     card.innerHTML = `
@@ -599,19 +889,24 @@ function renderHome(app) {
       <div class="post-card-content">
         <div class="post-card-meta">
           <span>${fmtDate(featured.createdAt)}</span>
-          <span>${featured.category}</span>
+          <span>${esc(featured.category)}</span>
           <span>${fmtReadingTime(featured.content)}</span>
+          ${featured._unsynced ? '<span class="badge badge-pending">Yerel (Eşitlenmedi)</span>' : ''}
         </div>
-        <h1 class="post-card-title" style="font-size:2rem"><a href="#/post?id=${featured.id}" style="color:inherit">${featured.title}</a></h1>
-        <p class="post-card-excerpt">${stripHtml(featured.content).slice(0,200)}…</p>
-        <div class="post-card-footer"><span>Yazar: ${getUser(featured.authorId)?.username || 'Bilinmiyor'}</span><a href="#/post?id=${featured.id}" class="btn btn-primary">Devamını oku</a></div>
+        <h1 class="post-card-title" style="font-size:2rem"><a href="#/post?id=${featured.id}" style="color:inherit">${esc(featured.title)}</a></h1>
+        <p class="post-card-excerpt">${esc(stripHtml(renderContent(featured.content)).slice(0,200))}…</p>
+        <div class="post-card-footer"><span>Yazar: ${esc(getUser(featured.authorId)?.username || 'Bilinmiyor')}</span><a href="#/post?id=${featured.id}" class="btn btn-primary">Devamını oku</a></div>
       </div>`;
     section.append(card);
   }
-  const grid = el('div', {class:'post-grid'});
-  recent.forEach(p => grid.append(createPostCard(p)));
-  section.append(el('h2', {class:'section-title'}, 'Son Yazılar'), grid);
-  if(!recent.length) section.append(el('p', {style:'text-align:center;color:var(--muted);margin-top:2rem'}, 'Henüz yazı yok. Admin panelden yazı oluşturun.'));
+  if(recent.length) {
+    const grid = el('div', {class:'post-grid'});
+    recent.forEach(p => grid.append(createPostCard(p)));
+    section.append(el('h2', {class:'section-title'}, 'Son Yazılar'), grid);
+  }
+  if(!featured && !recent.length) {
+    section.append(el('p', {style:'text-align:center;color:var(--muted);margin-top:2rem'}, state.currentUser ? 'Henüz yayınlanmış yazı yok. Yukarıdan ilk yazını paylaşabilirsin!' : 'Henüz yayınlanmış yazı yok.'));
+  }
   app.append(section);
 }
 function renderPostsList(app) {
@@ -634,24 +929,31 @@ function renderPost(app, id) {
   if(!post || post.status !== 'published') { app.innerHTML = '<div class="container" style="text-align:center;padding:3rem"><h2>Yazı bulunamadı</h2><a href="#/" class="btn btn-primary" style="margin-top:1rem">Anasayfa</a></div>'; return; }
   const author = getUser(post.authorId);
   const comments = getCommentsForPost(post.id);
+  const u = state.currentUser;
+  const canDirectEdit = u && (u.role === 'admin' || u.id === post.authorId);
+  const canProposeEdit = u && u.role === 'editor' && u.id !== post.authorId;
+  const pendingCountForPost = (state.editRequests || []).filter(r => r.postId === post.id && r.status === 'pending').length;
   const section = el('div', {class:'container'});
   const article = el('article', {class:'single-post'});
   article.innerHTML = `
     <header class="post-header">
       <div class="post-meta">
         <span>${fmtDate(post.createdAt)}</span>
-        <span>${post.category}</span>
+        <span>${esc(post.category)}</span>
         <span>${fmtReadingTime(post.content)}</span>
+        ${post._unsynced ? '<span class="badge badge-pending">Yerel (Eşitlenmedi)</span>' : ''}
       </div>
-      <h1 class="post-title">${post.title}</h1>
-      <div class="post-meta">
-        <span>Yazar: <a href="#/author?id=${author?.id}">${author?.username || 'Bilinmiyor'}</a></span>
-        ${state.currentUser && (state.currentUser.role==='admin' || state.currentUser.id===post.authorId) ? `<a href="#/admin?edit=${post.id}" class="btn btn-secondary" style="font-size:0.85rem">Düzenle</a>` : ''}
+      <h1 class="post-title">${esc(post.title)}</h1>
+      <div class="post-meta" style="align-items:center">
+        <span>Yazar: <a href="#/author?id=${author?.id}">${esc(author?.username || 'Bilinmiyor')}</a></span>
+        ${canDirectEdit ? `<a href="${panelBase()}?edit=${post.id}" class="btn btn-secondary" style="font-size:0.85rem;padding:0.4rem 0.85rem">Düzenle</a>` : ''}
+        ${canProposeEdit ? `<a href="${panelBase()}?propose=${post.id}" class="btn btn-primary" style="font-size:0.85rem;padding:0.4rem 0.85rem">✏️ Düzenleme İsteği Gönder</a>` : ''}
+        ${pendingCountForPost && u && (u.role==='admin' || u.id===post.authorId || u.role==='editor') ? `<a href="${panelBase()}?tab=edit-requests" class="badge badge-pending" style="text-decoration:none">⏳ ${pendingCountForPost} bekleyen düzenleme isteği</a>` : ''}
       </div>
     </header>
     ${post.coverImage ? `<img src="${post.coverImage}" alt="" class="post-cover">` : ''}
     <div class="post-content">${renderContent(post.content)}</div>
-    <div class="post-tags">${post.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+    <div class="post-tags">${(post.tags || []).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
   `;
   section.append(article);
   if(comments.length || state.currentUser) {
@@ -831,7 +1133,7 @@ function renderProfile(app) {
       <div class="profile-tabs">
         <button class="profile-tab active" data-tab="posts">Yazılarım (${userPosts.length})</button>
         <button class="profile-tab" data-tab="edit">Profili Düzenle</button>
-        ${u.role==='admin' ? '<button class="profile-tab" data-tab="admin">Admin Paneli</button>' : ''}
+        <button class="profile-tab" data-tab="panel">${u.role==='admin' ? 'Admin Paneli' : 'Ayarlar'}</button>
       </div>
       <div id="profile-content"></div>
     </div>
@@ -930,15 +1232,17 @@ function renderProfile(app) {
         if(headerBio) headerBio.textContent = bio || 'Bio yok';
         const headerWeb = $('#profile-header-website');
         if(headerWeb) headerWeb.innerHTML = formatWebsiteLink(website);
-        if(getGhToken()) {
+        if(hasWriteAccess()) {
           try {
             await saveUserToGitHub(state.users[userIdx]);
+            await logActivity('profile_update', { summary: 'Profil bilgilerini güncelledi.' });
             toast('Profil ve fotoğraf GitHub\'a kaydedildi!');
           } catch(err) {
             toast('GitHub kaydetme hatası: ' + err.message, 'error');
           }
         } else {
-          toast('Yerel kaydedildi (GitHub\'a yazmak için Admin → Depolama\'dan token girin)', 'warning');
+          await logActivity('profile_update', { summary: 'Profil bilgilerini yerel olarak güncelledi.' });
+          toast('Yerel kaydedildi (GitHub yazma bağlantısı henüz aktif değil)', 'warning');
         }
         renderEdit();
       }
@@ -948,83 +1252,424 @@ function renderProfile(app) {
     $$('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
     if(tab==='posts') renderPosts();
     else if(tab==='edit') renderEdit();
-    else if(tab==='admin') navigate('#/admin');
+    else if(tab==='panel') navigate(panelBase());
   };
   $$('.profile-tab').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
   renderPosts();
 }
 
-function renderAdmin(app) {
+function renderPanel(app, routePath = '/admin') {
   if(!requireAuth(['admin','editor','author'])) return;
   const u = state.currentUser;
   const isAdmin = u.role === 'admin';
-  const editId = new URLSearchParams(location.hash.split('?')[1]||'').get('edit');
-  const tab = new URLSearchParams(location.hash.split('?')[1]||'').get('tab') || 'dashboard';
+  const queryStr = location.hash.split('?')[1] || '';
+  const params = new URLSearchParams(queryStr);
+
+  // Admin paneli sadece admin'e gözüksün; diğer kullanıcılar #/settings'e yönlendirilsin
+  if(!isAdmin && routePath === '/admin') {
+    const newParams = new URLSearchParams(params);
+    const t = newParams.get('tab');
+    if(!t || t === 'dashboard' || t === 'posts') newParams.set('tab', 'myposts');
+    navigate('#/settings?' + newParams.toString());
+    return;
+  }
+  if(isAdmin && routePath === '/settings') {
+    navigate('#/admin' + (queryStr ? '?' + queryStr : ''));
+    return;
+  }
+
+  const base = isAdmin ? '#/admin' : '#/settings';
+  const editId = params.get('edit');
+  const proposeId = params.get('propose');
+  let tab = params.get('tab') || (isAdmin ? 'dashboard' : 'myposts');
+  if(!isAdmin && (tab === 'dashboard' || tab === 'posts' || tab === 'categories' || tab === 'users' || tab === 'comments' || tab === 'settings' || tab === 'storage')) {
+    tab = 'myposts';
+  }
+  if(isAdmin && tab === 'posts') tab = 'myposts';
+
+  const pendingReqCount = getPendingIncomingRequests(u).length;
+  const reqBadge = pendingReqCount ? `<span class="nav-badge">${pendingReqCount}</span>` : '';
+
   app.innerHTML = `
     <div class="admin-layout">
       <aside class="admin-sidebar">
-        <div class="admin-sidebar-title">${isAdmin ? 'Admin Paneli' : 'Yazar Paneli'}</div>
+        <div class="admin-sidebar-title">${isAdmin ? 'Admin Paneli' : 'Ayarlar'}</div>
         <nav class="admin-nav">
-          <a href="#/admin?tab=dashboard" data-tab="dashboard">📊 Dashboard</a>
-          <a href="#/admin?tab=posts" data-tab="posts">📝 Yazılar</a>
-          ${isAdmin ? '<a href="#/admin?tab=categories" data-tab="categories">🏷️ Kategoriler</a>' : ''}
-          ${isAdmin ? '<a href="#/admin?tab=users" data-tab="users">👥 Kullanıcılar</a>' : ''}
-          ${isAdmin ? '<a href="#/admin?tab=comments" data-tab="comments">💬 Yorumlar</a>' : ''}
-          ${isAdmin ? '<a href="#/admin?tab=settings" data-tab="settings">⚙️ Ayarlar</a>' : ''}
-          <a href="#/admin?tab=storage" data-tab="storage">💾 Depolama / Token</a>
+          ${isAdmin
+            ? `<a href="${base}?tab=dashboard" data-tab="dashboard">📊 Dashboard</a>
+               <a href="${base}?tab=activity" data-tab="activity">📜 Hareketler</a>
+               <a href="${base}?tab=myposts" data-tab="myposts">✍️ Yazdıklarım</a>
+               <a href="${base}?tab=edit-requests" data-tab="edit-requests">✏️ Düzenleme İstekleri ${reqBadge}</a>
+               <a href="${base}?tab=categories" data-tab="categories">🏷️ Kategoriler</a>
+               <a href="${base}?tab=users" data-tab="users">👥 Kullanıcılar</a>
+               <a href="${base}?tab=comments" data-tab="comments">💬 Yorumlar</a>
+               <a href="${base}?tab=settings" data-tab="settings">⚙️ Site Ayarları</a>
+               <a href="${base}?tab=storage" data-tab="storage">💾 Depolama / Token</a>`
+            : `<a href="${base}?tab=myposts" data-tab="myposts">✍️ Yazdıklarım</a>
+               <a href="${base}?tab=edit-requests" data-tab="edit-requests">✏️ Düzenleme İstekleri ${reqBadge}</a>
+               <a href="${base}?tab=activity" data-tab="activity">📜 Hareketlerim</a>`
+          }
         </nav>
       </aside>
       <main class="admin-main" id="admin-main"></main>
     </div>
   `;
   const main = $('#admin-main');
-  $$('.admin-nav a').forEach(a => a.classList.toggle('active', a.dataset.tab===tab));
-  if(editId) return renderPostEditor(main, editId);
+  const syncBanner = buildUnsyncedBanner();
+  if(syncBanner) main.append(syncBanner);
+  const contentWrap = el('div');
+  main.append(contentWrap);
+
+  $$('.admin-nav a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
+  if(proposeId) return renderPostEditor(contentWrap, proposeId, { propose: true });
+  if(editId) return renderPostEditor(contentWrap, editId, { propose: false });
+
   switch(tab) {
-    case 'dashboard': renderDashboard(main); break;
-    case 'posts': renderPostsAdmin(main); break;
-    case 'categories': if(isAdmin) renderCategoriesAdmin(main); break;
-    case 'users': if(isAdmin) renderUsersAdmin(main); break;
-    case 'comments': if(isAdmin) renderCommentsAdmin(main); break;
-    case 'settings': if(isAdmin) renderSettingsAdmin(main); break;
-    case 'storage': renderStorageAdmin(main); break;
+    case 'dashboard': if(isAdmin) renderDashboard(contentWrap); else renderMyPosts(contentWrap); break;
+    case 'activity': renderActivityLog(contentWrap); break;
+    case 'myposts': renderMyPosts(contentWrap); break;
+    case 'edit-requests': renderEditRequests(contentWrap); break;
+    case 'categories': if(isAdmin) renderCategoriesAdmin(contentWrap); break;
+    case 'users': if(isAdmin) renderUsersAdmin(contentWrap); break;
+    case 'comments': if(isAdmin) renderCommentsAdmin(contentWrap); break;
+    case 'settings': if(isAdmin) renderSettingsAdmin(contentWrap); break;
+    case 'storage': if(isAdmin) renderStorageAdmin(contentWrap); else renderMyPosts(contentWrap); break;
+    default: isAdmin ? renderDashboard(contentWrap) : renderMyPosts(contentWrap);
   }
 }
+
 function renderDashboard(main) {
   const published = state.posts.filter(p=>p.status==='published').length;
   const drafts = state.posts.filter(p=>p.status==='draft').length;
   const users = state.users.length;
-  const comments = state.comments.length;
+  const pendingReqs = (state.editRequests || []).filter(r=>r.status==='pending').length;
+  const recentActs = (state.activities || []).slice(0, 8);
   main.innerHTML = `
-    <div class="admin-header"><h1>Dashboard</h1><a href="#/admin?tab=posts&new=1" class="btn btn-primary">Yeni Yazı</a></div>
+    <div class="admin-header"><h1>Dashboard</h1><a href="#/admin?tab=myposts&new=1" class="btn btn-primary">Yeni Yazı</a></div>
     <div class="stat-grid">
-      <div class="stat-card"><div class="stat-icon">📝</div><div class="stat-info"><h3>Yayınlanan Yazılar</h3><p>${published}</p></div></div>
-      <div class="stat-card"><div class="stat-icon">📄</div><div class="stat-info"><h3>Taslaklar</h3><p>${drafts}</p></div></div>
-      <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-info"><h3>Kullanıcılar</h3><p>${users}</p></div></div>
-      <div class="stat-card"><div class="stat-icon">💬</div><div class="stat-info"><h3>Yorumlar</h3><p>${comments}</p></div></div>
+      <div class="stat-card card"><div class="stat-icon">📝</div><div class="stat-info"><h3>Yayınlanan Yazılar</h3><p>${published}</p></div></div>
+      <div class="stat-card card"><div class="stat-icon">📄</div><div class="stat-info"><h3>Taslaklar</h3><p>${drafts}</p></div></div>
+      <div class="stat-card card"><div class="stat-icon">👥</div><div class="stat-info"><h3>Kullanıcılar</h3><p>${users}</p></div></div>
+      <div class="stat-card card"><div class="stat-icon">✏️</div><div class="stat-info"><h3>Bekleyen İstekler</h3><p>${pendingReqs}</p></div></div>
+    </div>
+    <div class="card" style="margin-bottom:1.5rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
+        <h3>Son Hareketler</h3>
+        <a href="#/admin?tab=activity" class="btn btn-secondary" style="padding:0.4rem 0.8rem;font-size:0.85rem">Tümünü Gör</a>
+      </div>
+      ${recentActs.length
+        ? `<div class="activity-list">${recentActs.map(renderActivityItemHtml).join('')}</div>`
+        : '<p style="color:var(--muted)">Henüz kayıtlı hareket yok.</p>'}
     </div>
     <div class="card"><h3 style="margin-bottom:1rem">Son Yazılar</h3>
-      <div class="table-wrap"><table><thead><tr><th>Başlık</th><th>Durum</th><th>Kategori</th><th>Tarih</th><th></th></tr></thead><tbody>
-        ${state.posts.slice().sort((a,b)=>b.createdAt-a.createdAt).slice(0,10).map(p=>`<tr><td>${p.title}</td><td><span class="badge ${p.status==='published'?'badge-published':'badge-draft'}">${p.status==='published'?'Yayınlandı':'Taslak'}</span></td><td>${p.category}</td><td>${fmtDate(p.createdAt)}</td><td><a href="#/admin?edit=${p.id}" class="action-btn action-btn">Düzenle</a></td></tr>`).join('')}
-      </tbody></table></div></div>
-  `;
-}
-function renderPostsAdmin(main) {
-  const showNew = new URLSearchParams(location.hash.split('?')[1]||'').get('new');
-  if(showNew) return renderPostEditor(main, null);
-  const isAdmin = state.currentUser?.role === 'admin' || state.currentUser?.role === 'editor';
-  const visiblePosts = (isAdmin ? state.posts : getUserPosts(state.currentUser.id)).slice().sort((a,b)=>b.createdAt-a.createdAt);
-  main.innerHTML = `
-    <div class="admin-header"><h1>Yazılar</h1><a href="#/admin?tab=posts&new=1" class="btn btn-primary">Yeni Yazı</a></div>
-    <div class="card">
-      <div class="table-wrap"><table><thead><tr><th>Başlık</th><th>Yazar</th><th>Kategori</th><th>Durum</th><th>Tarih</th><th></th></tr></thead><tbody>
-        ${visiblePosts.map(p=>`<tr><td>${p.title}</td><td>${getUser(p.authorId)?.username||'?'}</td><td>${p.category}</td><td><span class="badge ${p.status==='published'?'badge-published':'badge-draft'}">${p.status==='published'?'Yayınlandı':'Taslak'}</span></td><td>${fmtDate(p.createdAt)}</td><td class="action-btns"><a href="#/admin?edit=${p.id}" class="btn btn-secondary action-btn">Düzenle</a><button class="btn btn-danger action-btn" onclick="deletePost('${p.id}')">Sil</button></td></tr>`).join('')}
+      <div class="table-wrap"><table><thead><tr><th>Başlık</th><th>Yazar</th><th>Durum</th><th>Kategori</th><th>Tarih</th><th></th></tr></thead><tbody>
+        ${state.posts.slice().sort((a,b)=>b.createdAt-a.createdAt).slice(0,10).map(p=>`<tr><td>${esc(p.title)} ${p._unsynced?'<span class="badge badge-pending">Yerel</span>':''}</td><td>${esc(getUser(p.authorId)?.username||'?')}</td><td><span class="badge ${p.status==='published'?'badge-published':'badge-draft'}">${p.status==='published'?'Yayınlandı':'Taslak'}</span></td><td>${esc(p.category)}</td><td>${fmtDate(p.createdAt)}</td><td><a href="#/admin?edit=${p.id}" class="btn btn-secondary action-btn">Düzenle</a></td></tr>`).join('')}
       </tbody></table></div>
-      ${!visiblePosts.length ? '<p style="text-align:center;color:var(--muted);padding:2rem">Henüz yazı yok</p>' : ''}
+      ${!state.posts.length ? '<p style="text-align:center;color:var(--muted);padding:1.5rem">Henüz yazı yok.</p>' : ''}
     </div>
   `;
 }
+
+function activityIcon(type) {
+  const map = {
+    post_create: '📝', post_edit: '✏️', post_delete: '🗑️',
+    edit_request_create: '📨', edit_request_approve: '✅', edit_request_reject: '❌',
+    comment_add: '💬', profile_update: '👤', user_create: '🆕', user_update: '🔧', settings_update: '⚙️'
+  };
+  return map[type] || '📌';
+}
+
+function renderActivityItemHtml(a) {
+  const actor = getUser(a.actorId);
+  const roleTag = actor ? roleBadge(actor.role) : (a.actorRole ? roleBadge(a.actorRole) : '');
+  const postLink = a.postId && getPost(a.postId) ? `<a href="#/post?id=${a.postId}" style="font-size:0.82rem">Yazıya git →</a>` : '';
+  return `
+    <div class="activity-item">
+      <div class="activity-icon">${activityIcon(a.type)}</div>
+      <div class="activity-body">
+        <div><strong>${esc(a.actorName || actor?.username || 'Kullanıcı')}</strong> ${roleTag} <span>${esc(a.summary)}</span></div>
+        <div class="activity-meta">
+          <span>${fmtDateTime(a.createdAt)}</span>
+          ${postLink}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderActivityLog(main) {
+  const u = state.currentUser;
+  const isAdmin = u.role === 'admin';
+  const allActs = Array.isArray(state.activities) ? state.activities : [];
+  const baseActs = isAdmin
+    ? allActs
+    : allActs.filter(a => a.actorId === u.id || a.targetUserId === u.id);
+
+  let selectedUser = 'all';
+  const renderList = () => {
+    const filtered = (isAdmin && selectedUser !== 'all')
+      ? baseActs.filter(a => a.actorId === selectedUser || a.targetUserId === selectedUser)
+      : baseActs;
+    const listEl = $('#activity-list-container', main);
+    if(!listEl) return;
+    listEl.innerHTML = filtered.length
+      ? `<div class="activity-list">${filtered.map(renderActivityItemHtml).join('')}</div>`
+      : '<p style="text-align:center;color:var(--muted);padding:2rem">Henüz kayıtlı hareket yok.</p>';
+  };
+
+  main.innerHTML = `
+    <div class="admin-header">
+      <div>
+        <h1>${isAdmin ? 'Hareketler (Tüm Kullanıcılar)' : 'Hareketlerim'}</h1>
+        <p style="color:var(--muted);font-size:0.9rem;margin-top:0.25rem">
+          ${isAdmin
+            ? 'Sitedeki tüm kullanıcıların yazı, yorum, profil ve düzenleme isteği hareketleri.'
+            : 'Sadece senin yaptığın ve yazılarınla ilgili gerçekleşen hareketler.'}
+        </p>
+      </div>
+      ${isAdmin ? `
+        <div style="min-width:200px">
+          <select id="activity-user-filter">
+            <option value="all">Tüm Kullanıcılar</option>
+            ${state.users.map(usr => `<option value="${usr.id}">${esc(usr.username)} (${usr.role})</option>`).join('')}
+          </select>
+        </div>
+      ` : ''}
+    </div>
+    <div class="card" id="activity-list-container"></div>
+  `;
+  if(isAdmin) {
+    $('#activity-user-filter', main).addEventListener('change', (e) => {
+      selectedUser = e.target.value;
+      renderList();
+    });
+  }
+  renderList();
+}
+
+function renderMyPosts(main) {
+  const params = new URLSearchParams(location.hash.split('?')[1] || '');
+  if(params.get('new')) return renderPostEditor(main, null, { propose: false });
+  const u = state.currentUser;
+  const isAdmin = u.role === 'admin';
+  const scope = isAdmin && params.get('scope') === 'all' ? 'all' : 'mine';
+  const visiblePosts = (scope === 'all' ? state.posts : getUserPosts(u.id)).slice().sort((a,b)=>b.createdAt-a.createdAt);
+  const base = panelBase();
+
+  main.innerHTML = `
+    <div class="admin-header">
+      <h1>${scope === 'all' ? 'Tüm Yazılar' : 'Yazdıklarım'}</h1>
+      <a href="${base}?tab=myposts&new=1" class="btn btn-primary">Yeni Yazı</a>
+    </div>
+    ${isAdmin ? `
+      <div class="pill-tabs">
+        <a href="${base}?tab=myposts" class="pill-tab ${scope==='mine'?'active':''}">Benim Yazılarım (${getUserPosts(u.id).length})</a>
+        <a href="${base}?tab=myposts&scope=all" class="pill-tab ${scope==='all'?'active':''}">Tüm Yazılar (${state.posts.length})</a>
+      </div>
+    ` : ''}
+    <div class="card">
+      <div class="table-wrap"><table><thead><tr><th>Başlık</th>${scope==='all'?'<th>Yazar</th>':''}<th>Kategori</th><th>Durum</th><th>Tarih</th><th></th></tr></thead><tbody>
+        ${visiblePosts.map(p=>`
+          <tr>
+            <td><a href="#/post?id=${p.id}" style="color:inherit;font-weight:600">${esc(p.title)}</a> ${p._unsynced?'<span class="badge badge-pending">Yerel</span>':''}</td>
+            ${scope==='all'?`<td>${esc(getUser(p.authorId)?.username||'?')}</td>`:''}
+            <td>${esc(p.category)}</td>
+            <td><span class="badge ${p.status==='published'?'badge-published':'badge-draft'}">${p.status==='published'?'Yayınlandı':'Taslak'}</span></td>
+            <td>${fmtDate(p.createdAt)}</td>
+            <td class="action-btns">
+              <a href="${base}?edit=${p.id}" class="btn btn-secondary action-btn">Düzenle</a>
+              <button class="btn btn-danger action-btn" onclick="deletePost('${p.id}')">Sil</button>
+            </td>
+          </tr>`).join('')}
+      </tbody></table></div>
+      ${!visiblePosts.length ? '<p style="text-align:center;color:var(--muted);padding:2rem">Henüz yazın yok. "Yeni Yazı" butonuna veya Anasayfa\'daki paylaşım kutusuna tıklayıp ilk yazını oluşturabilirsin.</p>' : ''}
+    </div>
+  `;
+}
+
+function renderEditRequests(main) {
+  const u = state.currentUser;
+  const isAdmin = u.role === 'admin';
+  const isEditor = u.role === 'editor';
+  const reqs = (state.editRequests || []).slice().sort((a,b) => b.createdAt - a.createdAt);
+
+  const incoming = isAdmin ? reqs : reqs.filter(r => r.authorId === u.id);
+  const outgoing = reqs.filter(r => r.editorId === u.id);
+  const otherPublishedPosts = isEditor
+    ? getPublishedPosts().filter(p => p.authorId !== u.id)
+    : [];
+
+  const statusBadge = (st) => {
+    if(st === 'approved') return '<span class="badge badge-published">Kabul Edildi</span>';
+    if(st === 'rejected') return '<span class="badge badge-rejected">Reddedildi</span>';
+    return '<span class="badge badge-pending">Bekliyor</span>';
+  };
+
+  const renderReqCard = (r, canDecide) => {
+    const post = getPost(r.postId);
+    const author = getUser(r.authorId);
+    const editor = getUser(r.editorId);
+    const curTitle = post ? post.title : r.originalTitle;
+    const curContent = post ? post.content : r.originalContent;
+    const isPending = r.status === 'pending';
+    return `
+      <div class="card" style="margin-bottom:1rem">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+          <div>
+            <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.35rem">
+              ${statusBadge(r.status)}
+              <strong>${esc(r.postTitle || curTitle)}</strong>
+            </div>
+            <div style="font-size:0.85rem;color:var(--muted)">
+              Editör: <strong>${esc(editor?.username || r.editorName || '?')}</strong> → Yazar: <strong>${esc(author?.username || '?')}</strong> • ${fmtDateTime(r.createdAt)}
+            </div>
+            ${r.note ? `<p style="margin-top:0.5rem;padding:0.6rem 0.85rem;background:var(--bg-elevated);border-radius:var(--radius-sm);font-size:0.9rem">💬 <strong>Editör Notu:</strong> ${esc(r.note)}</p>` : ''}
+          </div>
+          <div class="action-btns" style="flex-wrap:wrap">
+            ${canDecide && isPending ? `
+              <button class="btn btn-primary action-btn" onclick="approveEditRequest('${r.id}')">✅ Kabul Et</button>
+              <button class="btn btn-danger action-btn" onclick="rejectEditRequest('${r.id}')">❌ Reddet</button>
+            ` : ''}
+            ${!canDecide && isPending && r.editorId === u.id ? `
+              <button class="btn btn-danger action-btn" onclick="cancelEditRequest('${r.id}')">İptal Et</button>
+            ` : ''}
+          </div>
+        </div>
+        <details style="margin-top:0.85rem">
+          <summary style="cursor:pointer;color:var(--accent);font-weight:600;font-size:0.9rem">Değişiklikleri Karşılaştır (Eski / Önerilen)</summary>
+          <div class="diff-grid">
+            <div class="diff-box">
+              <h4>Mevcut Yazı</h4>
+              <p style="font-weight:700;margin-bottom:0.4rem">${esc(curTitle)}</p>
+              <div class="diff-content">${esc(curContent)}</div>
+            </div>
+            <div class="diff-box proposed">
+              <h4>Önerilen Düzenleme</h4>
+              <p style="font-weight:700;margin-bottom:0.4rem">${esc(r.proposedTitle)}</p>
+              <div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.4rem">Kategori: ${esc(r.proposedCategory)} ${r.proposedTags?.length ? '• Etiketler: ' + esc(r.proposedTags.join(', ')) : ''}</div>
+              <div class="diff-content">${esc(r.proposedContent)}</div>
+            </div>
+          </div>
+        </details>
+      </div>
+    `;
+  };
+
+  main.innerHTML = `
+    <div class="admin-header">
+      <div>
+        <h1>Düzenleme İstekleri</h1>
+        <p style="color:var(--muted);font-size:0.9rem;margin-top:0.25rem">
+          Editörler paylaşılan yazılar için düzenleme isteği gönderir; yazar kabul ederse yazı otomatik güncellenir.
+        </p>
+      </div>
+    </div>
+
+    <h3 style="margin-bottom:0.75rem">${isAdmin ? 'Tüm Gelen Düzenleme İstekleri' : 'Yazılarıma Gelen Düzenleme İstekleri'} (${incoming.filter(r=>r.status==='pending').length} bekliyor)</h3>
+    ${incoming.length ? incoming.map(r => renderReqCard(r, true)).join('') : '<div class="card" style="margin-bottom:1.5rem"><p style="color:var(--muted)">Henüz gelen düzenleme isteği yok.</p></div>'}
+
+    ${isEditor ? `
+      <h3 style="margin:1.75rem 0 0.75rem">Gönderdiğim Düzenleme İstekleri (${outgoing.length})</h3>
+      ${outgoing.length ? outgoing.map(r => renderReqCard(r, false)).join('') : '<div class="card" style="margin-bottom:1.5rem"><p style="color:var(--muted)">Henüz gönderdiğin düzenleme isteği yok.</p></div>'}
+
+      <h3 style="margin:1.75rem 0 0.75rem">Düzenleme İsteği Gönderebileceğin Yazılar</h3>
+      <div class="card">
+        <div class="table-wrap"><table><thead><tr><th>Başlık</th><th>Yazar</th><th>Kategori</th><th>Tarih</th><th></th></tr></thead><tbody>
+          ${otherPublishedPosts.map(p => `
+            <tr>
+              <td><a href="#/post?id=${p.id}" style="color:inherit;font-weight:600">${esc(p.title)}</a></td>
+              <td>${esc(getUser(p.authorId)?.username || '?')}</td>
+              <td>${esc(p.category)}</td>
+              <td>${fmtDate(p.createdAt)}</td>
+              <td><a href="${panelBase()}?propose=${p.id}" class="btn btn-primary action-btn">✏️ Düzenleme İsteği Gönder</a></td>
+            </tr>`).join('')}
+        </tbody></table></div>
+        ${!otherPublishedPosts.length ? '<p style="text-align:center;color:var(--muted);padding:1.5rem">Diğer yazarlara ait yayınlanmış yazı yok.</p>' : ''}
+      </div>
+    ` : ''}
+  `;
+}
+
+async function approveEditRequest(reqId) {
+  const req = (state.editRequests || []).find(r => r.id === reqId);
+  if(!req || req.status !== 'pending') return;
+  const u = state.currentUser;
+  if(!u || (u.role !== 'admin' && u.id !== req.authorId)) return toast('Bu isteği onaylama yetkiniz yok', 'error');
+  const post = getPost(req.postId);
+  if(!post) return toast('İlgili yazı artık bulunamıyor', 'error');
+
+  post.title = req.proposedTitle;
+  post.category = req.proposedCategory;
+  post.tags = Array.isArray(req.proposedTags) ? req.proposedTags : [];
+  if(req.proposedCoverImage !== undefined) post.coverImage = req.proposedCoverImage;
+  post.content = req.proposedContent;
+  post.updatedAt = Date.now();
+
+  req.status = 'approved';
+  req.resolvedAt = Date.now();
+  req.resolvedBy = u.id;
+  saveState();
+
+  try {
+    await savePostToGitHub(post);
+    await saveEditRequestsToGitHub();
+    toast('Düzenleme isteği kabul edildi ve yazı GitHub\'da güncellendi!');
+  } catch(e) {
+    post._unsynced = true;
+    saveState();
+    toast('Değişiklik yerel olarak uygulandı ancak GitHub hatası: ' + e.message, 'warning');
+  }
+  await logActivity('edit_request_approve', {
+    summary: `${req.editorName || 'Editör'} tarafından gönderilen "${post.title}" düzenleme isteğini kabul etti.`,
+    postId: post.id, postTitle: post.title, targetUserId: req.editorId
+  });
+  setNav();
+  renderRoute(currentRoute);
+}
+
+async function rejectEditRequest(reqId) {
+  const req = (state.editRequests || []).find(r => r.id === reqId);
+  if(!req || req.status !== 'pending') return;
+  const u = state.currentUser;
+  if(!u || (u.role !== 'admin' && u.id !== req.authorId)) return toast('Bu isteği reddetme yetkiniz yok', 'error');
+  if(!confirm('Bu düzenleme isteğini reddetmek istiyor musunuz?')) return;
+
+  req.status = 'rejected';
+  req.resolvedAt = Date.now();
+  req.resolvedBy = u.id;
+  saveState();
+
+  try {
+    await saveEditRequestsToGitHub();
+    toast('Düzenleme isteği reddedildi.');
+  } catch(e) {
+    toast('GitHub kaydetme hatası: ' + e.message, 'error');
+  }
+  await logActivity('edit_request_reject', {
+    summary: `${req.editorName || 'Editör'} tarafından gönderilen "${req.postTitle}" düzenleme isteğini reddetti.`,
+    postId: req.postId, postTitle: req.postTitle, targetUserId: req.editorId
+  });
+  setNav();
+  renderRoute(currentRoute);
+}
+
+async function cancelEditRequest(reqId) {
+  const req = (state.editRequests || []).find(r => r.id === reqId);
+  if(!req || req.status !== 'pending') return;
+  if(req.editorId !== state.currentUser?.id) return;
+  if(!confirm('Gönderdiğiniz düzenleme isteğini iptal etmek istiyor musunuz?')) return;
+  state.editRequests = state.editRequests.filter(r => r.id !== reqId);
+  saveState();
+  try { await saveEditRequestsToGitHub(); toast('Düzenleme isteği iptal edildi'); } catch(e) { toast('GitHub hatası: ' + e.message, 'error'); }
+  setNav();
+  renderRoute(currentRoute);
+}
+
 async function deletePost(id) {
+  const post = getPost(id);
+  if(!post) return;
+  const u = state.currentUser;
+  if(!u || (u.role !== 'admin' && post.authorId !== u.id)) return toast('Bu yazıyı silme yetkiniz yok', 'error');
   if(!confirm('Bu yazıyı silmek istiyor musunuz?')) return;
   state.posts = state.posts.filter(p => p.id !== id);
   saveState();
@@ -1034,22 +1679,61 @@ async function deletePost(id) {
   } catch(e) {
     toast('GitHub silme hatası: ' + e.message, 'error');
   }
-  renderAdmin($('#app'));
+  await logActivity('post_delete', {
+    summary: `"${post.title}" başlıklı yazıyı sildi.`,
+    postTitle: post.title
+  });
+  renderRoute(currentRoute);
 }
-function renderPostEditor(main, id) {
-  editingPostId = id;
-  const post = id ? getPost(id) : { id:uid(), title:'', content:'', excerpt:'', category:state.categories[0], tags:[], status:'published', coverImage:'', authorId:state.currentUser.id, createdAt:Date.now(), updatedAt:Date.now() };
-  const isNew = !id;
+
+function renderPostEditor(main, id, { propose = false } = {}) {
+  editingPostId = propose ? null : id;
+  proposingPostId = propose ? id : null;
+  const u = state.currentUser;
+  const existingPost = id ? getPost(id) : null;
+
+  if(propose) {
+    if(!existingPost) { main.innerHTML = '<div class="card"><p>Yazı bulunamadı.</p></div>'; return; }
+    if(u.role !== 'editor' && u.role !== 'admin') { toast('Düzenleme isteği göndermek için editör olmalısınız', 'error'); navigate(panelBase()); return; }
+  } else if(id) {
+    if(!existingPost) { main.innerHTML = '<div class="card"><p>Yazı bulunamadı.</p></div>'; return; }
+    if(u.role !== 'admin' && existingPost.authorId !== u.id) {
+      if(u.role === 'editor') {
+        navigate(`${panelBase()}?propose=${id}`);
+        return;
+      }
+      toast('Bu yazıyı düzenleme yetkiniz yok', 'error');
+      navigate(panelBase());
+      return;
+    }
+  }
+
+  const post = existingPost || { id:uid(), title:'', content:'', excerpt:'', category:state.categories[0], tags:[], status:'published', coverImage:'', authorId:u.id, createdAt:Date.now(), updatedAt:Date.now() };
+  const isNew = !id && !propose;
+  const cancelUrl = propose ? `${panelBase()}?tab=edit-requests` : `${panelBase()}?tab=myposts`;
   uploadImageBase64 = post.coverImage || null;
+
   main.innerHTML = `
-    <div class="admin-header"><h1>${isNew?'Yeni Yazı':`Düzenle: ${post.title}`}</h1><div style="display:flex;gap:0.5rem"><button class="btn btn-secondary" onclick="navigate('#/admin?tab=posts')">İptal</button><button class="btn btn-primary" id="save-post">${isNew?'Paylaş / Kaydet':'Güncelle'}</button></div></div>
-    <div class="card" style="max-width:900px">
-      <div class="form-group"><label>Başlık</label><input id="post-title" value="${post.title}" placeholder="Yazı başlığı"></div>
-      <div class="form-row">
-        <div class="form-group"><label>Kategori</label><select id="post-category">${state.categories.map(c=>`<option value="${c}" ${c===post.category?'selected':''}>${c}</option>`).join('')}</select></div>
-        <div class="form-group"><label>Durum</label><select id="post-status"><option value="published" ${post.status==='published'?'selected':''}>Yayınlandı</option><option value="draft" ${post.status==='draft'?'selected':''}>Taslak</option></select></div>
+    <div class="admin-header">
+      <div>
+        <h1>${propose ? `Düzenleme İsteği: ${esc(post.title)}` : (isNew ? 'Yeni Yazı' : `Düzenle: ${esc(post.title)}`)}</h1>
+        ${propose ? `<p style="color:var(--muted);font-size:0.9rem;margin-top:0.25rem">Bu değişiklikler doğrudan yayınlanmaz; yazar (<strong>${esc(getUser(post.authorId)?.username || '?')}</strong>) onaylarsa yazı güncellenir.</p>` : ''}
       </div>
-      <div class="form-group"><label>Etiketler (virgülle ayırın)</label><input id="post-tags" value="${post.tags.join(', ')}" placeholder="ödev, yazılım, blog"></div>
+      <div style="display:flex;gap:0.5rem">
+        <button class="btn btn-secondary" onclick="navigate('${cancelUrl}')">İptal</button>
+        <button class="btn btn-primary" id="save-post">${propose ? 'Düzenleme İsteği Gönder' : (isNew ? 'Paylaş / Kaydet' : 'Güncelle')}</button>
+      </div>
+    </div>
+    <div class="card" style="max-width:900px">
+      ${propose ? `<div class="form-group"><label>Düzenleme Notu (Yazar için açıklama)</label><input id="edit-request-note" placeholder="Örn: Yazım hataları düzeltildi, giriş paragrafı akıcı hale getirildi..."></div>` : ''}
+      <div class="form-group"><label>Başlık</label><input id="post-title" value="${esc(post.title)}" placeholder="Yazı başlığı"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Kategori</label><select id="post-category">${state.categories.map(c=>`<option value="${esc(c)}" ${c===post.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+        ${propose
+          ? `<input type="hidden" id="post-status" value="${esc(post.status)}">`
+          : `<div class="form-group"><label>Durum</label><select id="post-status"><option value="published" ${post.status==='published'?'selected':''}>Yayınlandı</option><option value="draft" ${post.status==='draft'?'selected':''}>Taslak</option></select></div>`}
+      </div>
+      <div class="form-group"><label>Etiketler (virgülle ayırın)</label><input id="post-tags" value="${esc((post.tags || []).join(', '))}" placeholder="ödev, yazılım, blog"></div>
       <div class="form-group"><label>Kapak Görseli</label><div class="image-upload-area" id="cover-upload"><input type="file" id="cover-input" accept="image/*" class="visually-hidden"><span id="cover-text">${uploadImageBase64 ? 'Görsel yüklendi (değiştirmek için tıklayın)' : 'Tıklayın veya sürükleyin (max 2MB)'}</span>${uploadImageBase64 ? `<img id="cover-preview" src="${uploadImageBase64}" style="margin-top:1rem">` : ''}</div></div>
       <div class="form-group"><label>İçerik</label>
         <div class="editor-toolbar">
@@ -1066,7 +1750,7 @@ function renderPostEditor(main, id) {
           <button type="button" data-fmt="link" title="Bağlantı">🔗</button>
           <button type="button" data-fmt="img" title="Görsel">🖼️</button>
         </div>
-        <textarea id="post-content" spellcheck="false">${post.content}</textarea>
+        <textarea id="post-content" spellcheck="false">${esc(post.content)}</textarea>
       </div>
     </div>
   `;
@@ -1093,6 +1777,7 @@ function renderPostEditor(main, id) {
     reader.readAsDataURL(file);
   }
 }
+
 async function savePost() {
   const btn = $('#save-post');
   const title = $('#post-title').value.trim();
@@ -1101,33 +1786,87 @@ async function savePost() {
   const status = $('#post-status').value;
   const tags = $('#post-tags').value.split(',').map(t=>t.trim()).filter(Boolean);
   if(!title || !content) return toast('Başlık ve içerik zorunlu', 'error');
+
+  // Editör düzenleme isteği modu
+  if(proposingPostId) {
+    const orig = getPost(proposingPostId);
+    if(!orig) return toast('Yazı bulunamadı', 'error');
+    const note = ($('#edit-request-note')?.value || '').trim();
+    if(btn) { btn.disabled = true; btn.textContent = 'Gönderiliyor...'; }
+    const req = {
+      id: uid(),
+      postId: orig.id,
+      postTitle: orig.title,
+      authorId: orig.authorId,
+      editorId: state.currentUser.id,
+      editorName: state.currentUser.username,
+      proposedTitle: title,
+      proposedCategory: category,
+      proposedTags: tags,
+      proposedCoverImage: uploadImageBase64,
+      proposedContent: content,
+      note,
+      originalTitle: orig.title,
+      originalContent: orig.content,
+      status: 'pending',
+      createdAt: Date.now(),
+      resolvedAt: null,
+      resolvedBy: null
+    };
+    if(!Array.isArray(state.editRequests)) state.editRequests = [];
+    state.editRequests.unshift(req);
+    saveState();
+    try {
+      await saveEditRequestsToGitHub();
+      toast('Düzenleme isteği yazara gönderildi! Yazar kabul ettiğinde yazı güncellenecek.');
+    } catch(e) {
+      toast('İstek yerel kaydedildi, GitHub hatası: ' + e.message, 'warning');
+    }
+    await logActivity('edit_request_create', {
+      summary: `"${orig.title}" yazısı için düzenleme isteği gönderdi.`,
+      postId: orig.id, postTitle: orig.title, targetUserId: orig.authorId
+    });
+    proposingPostId = null;
+    setNav();
+    navigate(`${panelBase()}?tab=edit-requests`);
+    return;
+  }
+
   if(btn) { btn.disabled = true; btn.textContent = 'Kaydediliyor...'; }
   const now = Date.now();
-  const post = editingPostId ? getPost(editingPostId) : { id:uid(), authorId:state.currentUser.id, createdAt:now };
+  const isEdit = !!editingPostId;
+  const post = isEdit ? getPost(editingPostId) : { id:uid(), authorId:state.currentUser.id, createdAt:now };
   if(post) {
     post.title = title; post.content = content; post.category = category; post.status = status; post.tags = tags; post.coverImage = uploadImageBase64; post.updatedAt = now;
-    if(!editingPostId) state.posts.unshift(post);
+    if(!isEdit) state.posts.unshift(post);
     saveState();
     try {
       await savePostToGitHub(post);
-      toast(editingPostId ? 'Yazı GitHub\'a kaydedildi!' : 'Yazı yayınlandı ve GitHub\'a kaydedildi!', 'success');
+      toast(isEdit ? 'Yazı GitHub\'a kaydedildi!' : 'Yazı yayınlandı ve GitHub\'a kaydedildi!', 'success');
     } catch(e) {
-      toast('GitHub kaydetme hatası: ' + e.message, 'error');
+      post._unsynced = true;
+      saveState();
+      toast('Yazı sadece bu cihaza kaydedildi! Diğer cihazlarda görünmesi için Depolama / Token sekmesinden GitHub token girin.', 'warning');
     }
-    navigate('#/admin?tab=posts');
+    await logActivity(isEdit ? 'post_edit' : 'post_create', {
+      summary: isEdit ? `"${post.title}" başlıklı yazıyı düzenledi.` : `"${post.title}" başlıklı yeni bir yazı ${status==='published'?'paylaştı':'taslak olarak kaydetti'}.`,
+      postId: post.id, postTitle: post.title
+    });
+    navigate(`${panelBase()}?tab=myposts`);
   }
 }
+
 function renderCategoriesAdmin(main) {
   main.innerHTML = `
     <div class="admin-header"><h1>Kategoriler</h1><button class="btn btn-primary" onclick="addCategory()">Ekle</button></div>
-    <div class="card"><ul style="list-style:none">${state.categories.map(c=>`<li style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 0;border-bottom:1px solid var(--border)"><span>${c}</span><div><button class="btn btn-secondary action-btn" onclick="editCategory('${c}')">Düzenle</button><button class="btn btn-danger action-btn" onclick="deleteCategory('${c}')">Sil</button></div></li>`).join('')}</ul></div>
+    <div class="card"><ul style="list-style:none">${state.categories.map(c=>`<li style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 0;border-bottom:1px solid var(--border)"><span>${esc(c)}</span><div><button class="btn btn-secondary action-btn" onclick="editCategory('${esc(c)}')">Düzenle</button><button class="btn btn-danger action-btn" onclick="deleteCategory('${esc(c)}')">Sil</button></div></li>`).join('')}</ul></div>
   `;
 }
 function renderUsersAdmin(main) {
   main.innerHTML = `
     <div class="admin-header"><h1>Kullanıcılar</h1><button class="btn btn-primary" onclick="openUserModal()">Yeni Kullanıcı</button></div>
     <div class="card"><div class="table-wrap"><table><thead><tr><th>Kullanıcı</th><th>Rol</th><th>Yazılar</th><th>Kayıt</th><th></th></tr></thead><tbody>
-      ${state.users.map(u=>`<tr><td>${u.username}</td><td><span class="badge ${u.role==='admin'?'badge-admin':u.role==='editor'?'badge-editor':''}">${u.role}</span></td><td>${getUserPosts(u.id).length}</td><td>${fmtDate(u.createdAt)}</td><td><button class="action-btn" onclick="openUserModal('${u.id}')">Düzenle</button>${u.id!==state.currentUser.id?`<button class="action-btn btn-danger" onclick="deleteUser('${u.id}')">Sil</button>`:''}</td></tr>`).join('')}
+      ${state.users.map(u=>`<tr><td>${esc(u.username)}</td><td>${roleBadge(u.role)}</td><td>${getUserPosts(u.id).length}</td><td>${fmtDate(u.createdAt)}</td><td><button class="action-btn btn btn-secondary" onclick="openUserModal('${u.id}')">Düzenle</button>${u.id!==state.currentUser.id?` <button class="action-btn btn btn-danger" onclick="deleteUser('${u.id}')">Sil</button>`:''}</td></tr>`).join('')}
     </tbody></table></div></div>
   `;
 }
@@ -1135,7 +1874,7 @@ function renderCommentsAdmin(main) {
   main.innerHTML = `
     <div class="admin-header"><h1>Yorumlar</h1></div>
     <div class="card"><div class="table-wrap"><table><thead><tr><th>Yazar</th><th>Yazı</th><th>İçerik</th><th>Tarih</th><th></th></tr></thead><tbody>
-      ${state.comments.map(c=>{const u=getUser(c.userId); const p=getPost(c.postId); return `<tr><td>${u?.username||'Silinmiş'}</td><td>${p?.title||'Silinmiş'}</td><td>${c.content.slice(0,80)}…</td><td>${fmtDateTime(c.createdAt)}</td><td><button class="action-btn btn-danger" onclick="deleteComment('${c.id}')">Sil</button></td></tr>`}).join('')}
+      ${state.comments.map(c=>{const u=getUser(c.userId); const p=getPost(c.postId); return `<tr><td>${esc(u?.username||'Silinmiş')}</td><td>${esc(p?.title||'Silinmiş')}</td><td>${esc(c.content.slice(0,80))}…</td><td>${fmtDateTime(c.createdAt)}</td><td><button class="action-btn btn btn-danger" onclick="deleteComment('${c.id}')">Sil</button></td></tr>`}).join('')}
     </tbody></table></div>${!state.comments.length?'<p style="text-align:center;color:var(--muted);padding:2rem">Yorum yok</p>':''}</div>
   `;
 }
@@ -1143,78 +1882,174 @@ function renderSettingsAdmin(main) {
   main.innerHTML = `
     <div class="admin-header"><h1>Site Ayarları</h1></div>
     <form class="card" id="settings-form" style="max-width:600px">
-      <div class="form-group"><label>Site Başlığı</label><input name="title" value="${state.settings.title}"></div>
-      <div class="form-group"><label>Site Açıklaması</label><textarea name="description" rows="3">${state.settings.description}</textarea></div>
-      <div class="form-group"><label>Footer Metni</label><textarea name="footer" rows="2">${state.settings.footer}</textarea></div>
+      <div class="form-group"><label>Site Başlığı</label><input name="title" value="${esc(state.settings.title)}"></div>
+      <div class="form-group"><label>Site Açıklaması</label><textarea name="description" rows="3">${esc(state.settings.description)}</textarea></div>
+      <div class="form-group"><label>Footer Metni</label><textarea name="footer" rows="2">${esc(state.settings.footer)}</textarea></div>
       <button type="submit" class="btn btn-primary">Kaydet</button>
     </form>
   `;
-  $('#settings-form').addEventListener('submit', async e => { e.preventDefault(); const fd=new FormData(e.target); state.settings.title=fd.get('title'); state.settings.description=fd.get('description'); state.settings.footer=fd.get('footer'); saveState(); applySiteMeta(); try { await saveSettingsToGitHub(); toast('Ayarlar GitHub\'a kaydedildi'); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); } });
+  $('#settings-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    state.settings.title = fd.get('title');
+    state.settings.description = fd.get('description');
+    state.settings.footer = fd.get('footer');
+    saveState(); applySiteMeta();
+    try {
+      await saveSettingsToGitHub();
+      await logActivity('settings_update', { summary: 'Site ayarlarını güncelledi.' });
+      toast('Ayarlar GitHub\'a kaydedildi');
+    } catch(err) {
+      toast('GitHub kaydetme hatası: ' + err.message, 'error');
+    }
+  });
 }
 function renderStorageAdmin(main) {
   const hasToken = !!getGhToken();
+  const proxyUrl = getProxyUrl();
+  const canWrite = hasWriteAccess();
+  const unsyncedCount = state.posts.filter(p => p._unsynced).length;
   main.innerHTML = `
-    <div class="admin-header"><h1>Depolama (GitHub Pages)</h1></div>
-    <div class="card" style="max-width:600px">
-      <h3 style="margin-bottom:1rem">Durum: <span class="badge ${hasToken ? 'badge-published' : 'badge-draft'}">${hasToken ? 'Token Kayıtlı (Yazmaya Hazır)' : 'Token Girilmedi (Sadece Okuma)'}</span></h3>
-      <p style="color:var(--muted);margin-bottom:1.5rem">
-        <strong>Okuma (herkes / hoca):</strong> Token gerekmez, doğrudan GitHub'dan okunur.<br>
-        <strong>Yazma (admin / kardeş):</strong> Sadece bu repoya yetkili Fine-Grained Token (<code>github_pat_...</code>) gerekir. Token yalnızca bu tarayıcıda saklanır, asla koda veya repoya yazılmaz.
+    <div class="admin-header"><h1>Depolama / Token (Sadece Yönetici)</h1></div>
+    <div class="card" style="max-width:680px;margin-bottom:1.5rem">
+      <h3 style="margin-bottom:0.75rem">Durum:
+        <span class="badge ${canWrite ? 'badge-published' : 'badge-draft'}">
+          ${proxyUrl ? 'Ortak Sunucu Aktif (Her Cihazda & Herkes İçin Geçerli)' : (hasToken ? 'Token Kayıtlı (Bu Tarayıcıda Yazmaya Hazır)' : 'Bağlantı Yok (Sadece Okuma)')}
+        </span>
+      </h3>
+      <p style="color:var(--muted);font-size:0.9rem;margin-bottom:1.25rem">
+        <strong>Neden ham token doğrudan GitHub'a kaydedilemez?</strong> GitHub, herkese açık (public) repoya yazılan <code>github_pat_...</code> token'larını güvenlik nedeniyle saniyeler içinde otomatik iptal eder.<br>
+        <strong>Her cihazda ve tüm kullanıcılarda (mobil + PC) tek seferde çalışması için:</strong> Aşağıdaki <em>Ortak Yazma Sunucusu (Cloudflare Worker)</em> adresini bir kez girip kaydetmen yeterlidir — token sadece Cloudflare gizli değişkeninde durur, hiçbir kullanıcıya veya cihaza token girmen gerekmez.
       </p>
-      <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:1rem">
+      <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:1.25rem;font-size:0.9rem">
         <strong>Repo:</strong> <code>Onii-sama-blog/Onii-sama-blog.github.io</code> (Public, <code>main</code>)<br>
         <strong>URL:</strong> <code>https://onii-sama-blog.github.io/</code>
       </div>
+
       <div class="form-group">
-        <label>GitHub Fine-Grained Token (Contents: Read and write)</label>
-        <input type="password" id="gh-token-input" placeholder="github_pat_..." value="${hasToken ? '••••••••••••••••' : ''}" autocomplete="off">
-        <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
-          <button class="btn btn-primary" onclick="saveGhToken()">Token Kaydet</button>
+        <label>1. GitHub Fine-Grained Token (Sadece bu tarayıcı — Contents: Read and write)</label>
+        <div style="display:flex;gap:0.5rem">
+          <input type="password" id="gh-token-input" placeholder="github_pat_... (yeni token yapıştırın)" value="" autocomplete="off" style="flex:1">
+          <button type="button" class="btn btn-secondary" id="toggle-token-vis" onclick="const i=$('#gh-token-input'); i.type=i.type==='password'?'text':'password';" title="Göster/Gizle">👁️</button>
+        </div>
+        ${hasToken ? `<p style="font-size:0.82rem;color:var(--accent);margin-top:0.35rem">✅ Bu tarayıcıda kayıtlı bir token var (${esc(getGhToken().slice(0, 12))}...).</p>` : ''}
+        <div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap">
+          <button class="btn btn-primary" id="save-token-btn" onclick="saveGhToken()">Token Doğrula ve Kaydet</button>
           ${hasToken ? '<button class="btn btn-danger" onclick="clearGhToken()">Token Sil</button>' : ''}
+          ${unsyncedCount && canWrite ? `<button class="btn btn-secondary" onclick="syncUnsyncedPosts()">Bekleyen ${unsyncedCount} Yazıyı Eşitle</button>` : ''}
         </div>
       </div>
-      <button id="init-repo-btn" class="btn btn-secondary" onclick="initGitHubRepo()" ${!hasToken ? 'disabled style="opacity:0.5"' : ''}>Repo Yapısını Başlat / Verileri GitHub'a Eşitle</button>
+
       <hr style="border-color:var(--border);margin:1.5rem 0">
-      <h4>Yedekleme</h4>
-      <button class="btn btn-secondary" onclick="downloadBackup()">JSON Yedek İndir</button>
-      <button class="btn btn-secondary" style="margin-left:0.5rem" onclick="document.getElementById('backup-input').click()">JSON Yedekten Geri Yükle</button>
-      <input type="file" id="backup-input" accept=".json" class="visually-hidden" onchange="restoreBackup(event)">
+
+      <div class="form-group">
+        <label>2. Ortak Yazma Sunucusu URL (Önerilen — Tüm Cihazlar & Kullanıcılar İçin)</label>
+        <input type="url" id="proxy-url-input" placeholder="https://onii-blog-api.kullanici.workers.dev" value="${esc(proxyUrl)}" autocomplete="off">
+        <p style="font-size:0.82rem;color:var(--muted);margin-top:0.35rem">
+          Bu adres <code>data/settings.txt</code> içine kaydedilir. Ayarlandığında mobil, PC ve diğer kullanıcılar token girmeden doğrudan GitHub'a yazabilir.
+        </p>
+        <div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap">
+          <button class="btn btn-primary" id="save-proxy-btn" onclick="saveProxyUrl()">Sunucu URL Kaydet</button>
+          ${proxyUrl ? '<button class="btn btn-danger" onclick="clearProxyUrl()">Sunucuyu Kaldır</button>' : ''}
+        </div>
+      </div>
+
+      <hr style="border-color:var(--border);margin:1.5rem 0">
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+        <button id="init-repo-btn" class="btn btn-secondary" onclick="initGitHubRepo()" ${!canWrite ? 'disabled style="opacity:0.5"' : ''}>Repo Yapısını Başlat / Verileri GitHub'a Eşitle</button>
+        <button class="btn btn-secondary" onclick="downloadBackup()">JSON Yedek İndir</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('backup-input').click()">JSON Yedekten Geri Yükle</button>
+        <input type="file" id="backup-input" accept=".json" class="visually-hidden" onchange="restoreBackup(event)">
+      </div>
     </div>
   `;
 }
 
-function saveGhToken() {
-  const token = $('#gh-token-input').value.trim();
-  if(!token || token.startsWith('••')) return toast('Lütfen gerçek token kodunu yapıştırın', 'error');
-  if(!token.startsWith('ghp_') && !token.startsWith('github_pat_')) return toast('Geçersiz token formatı (github_pat_ veya ghp_ ile başlamalı)', 'error');
-  setGhToken(token);
-  toast('Token tarayıcıya kaydedildi! Şimdi "Repo Yapısını Başlat" butonuna basabilirsiniz.');
-  renderAdmin($('#app'));
+async function saveGhToken() {
+  const input = $('#gh-token-input');
+  const btn = $('#save-token-btn');
+  const raw = (input?.value || '').replace(/\s+/g, '');
+  if(!raw || raw.startsWith('••')) return toast('Lütfen gerçek GitHub token kodunu yapıştırın', 'error');
+  if(!raw.startsWith('ghp_') && !raw.startsWith('github_pat_')) {
+    return toast('Geçersiz token formatı: "github_pat_" veya "ghp_" ile başlamalı (boşluksuz)', 'error');
+  }
+  if(btn) { btn.disabled = true; btn.textContent = 'Doğrulanıyor...'; }
+  try {
+    const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}`, {
+      headers: { 'Accept': 'application/vnd.github.v3+json', 'Authorization': `Bearer ${raw}` },
+      cache: 'no-store'
+    });
+    if(r.status === 401) throw new Error('Token geçersiz veya süresi dolmuş (401). Yeni bir token oluşturun.');
+    if(r.status === 404) throw new Error('Token bu repoya erişemiyor (404). Fine-Grained Token ayarında Onii-sama-blog.github.io reposunu seçin.');
+    if(!r.ok) throw new Error(`GitHub doğrulama hatası (${r.status})`);
+    const repo = await r.json();
+    if(repo.permissions && repo.permissions.push === false) {
+      throw new Error('Bu token\'ın yazma yetkisi yok! GitHub\'da "Contents: Read and write" iznini açın.');
+    }
+    setGhToken(raw);
+    if(getGhToken() !== raw) throw new Error('Tarayıcı localStorage yazmaya izin vermiyor (Gizli sekme kapalı olmalı).');
+    toast('✅ Token doğrulandı ve kaydedildi!');
+    if(state.posts.some(p => p._unsynced)) {
+      await syncUnsyncedPosts();
+    } else {
+      renderRoute(currentRoute);
+    }
+  } catch(e) {
+    toast(e.message, 'error');
+    if(btn) { btn.disabled = false; btn.textContent = 'Token Doğrula ve Kaydet'; }
+  }
+}
+
+async function saveProxyUrl() {
+  const raw = ($('#proxy-url-input')?.value || '').trim().replace(/\/+$/, '');
+  if(!raw || !/^https:\/\/.+/i.test(raw)) return toast('Geçerli bir https:// sunucu adresi girin', 'error');
+  const btn = $('#save-proxy-btn');
+  if(btn) { btn.disabled = true; btn.textContent = 'Kaydediliyor...'; }
+  try {
+    const ping = await fetch(`${raw}/health`, { cache: 'no-store' });
+    if(!ping.ok) throw new Error(`Sunucu yanıt vermedi (${ping.status})`);
+    state.settings.proxyUrl = raw;
+    saveState();
+    await saveSettingsToGitHub();
+    toast('✅ Ortak yazma sunucusu kaydedildi! Artık tüm cihazlar ve kullanıcılar token olmadan yazabilir.');
+    renderRoute(currentRoute);
+  } catch(e) {
+    toast('Sunucu bağlantısı doğrulanamadı: ' + e.message, 'error');
+    if(btn) { btn.disabled = false; btn.textContent = 'Sunucu URL Kaydet'; }
+  }
+}
+
+async function clearProxyUrl() {
+  state.settings.proxyUrl = '';
+  saveState();
+  if(getGhToken()) { try { await saveSettingsToGitHub(); } catch {} }
+  toast('Ortak yazma sunucusu kaldırıldı');
+  renderRoute(currentRoute);
 }
 
 function clearGhToken() {
   setGhToken('');
   toast('Token silindi');
-  renderAdmin($('#app'));
+  renderRoute(currentRoute);
 }
 
 /* ==================== MODALS / ACTIONS ==================== */
 async function addCategory() {
   const name = prompt('Kategori adı:');
-  if(name && !state.categories.includes(name.trim())) { state.categories.push(name.trim()); saveState(); try { await saveCategoriesToGitHub(); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); } renderAdmin($('#app'));}
+  if(name && !state.categories.includes(name.trim())) { state.categories.push(name.trim()); saveState(); try { await saveCategoriesToGitHub(); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); } renderRoute(currentRoute);}
 }
-async function editCategory(old) { const n = prompt('Yeni ad:', old); if(n && n!==old && !state.categories.includes(n)) { const i = state.categories.indexOf(old); state.categories[i]=n; state.posts.filter(p=>p.category===old).forEach(p=>p.category=n); saveState(); try { await saveCategoriesToGitHub(); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); } renderAdmin($('#app')); } }
-async function deleteCategory(cat) { if(confirm(`"${cat}" kategorisini sil? Yazılar "Genel"e taşınacak.`)) { state.posts.filter(p=>p.category===cat).forEach(p=>p.category='Genel'); state.categories = state.categories.filter(c=>c!==cat); if(!state.categories.length) state.categories=['Genel']; saveState(); try { await saveCategoriesToGitHub(); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); } renderAdmin($('#app')); } }
+async function editCategory(old) { const n = prompt('Yeni ad:', old); if(n && n!==old && !state.categories.includes(n)) { const i = state.categories.indexOf(old); state.categories[i]=n; state.posts.filter(p=>p.category===old).forEach(p=>p.category=n); saveState(); try { await saveCategoriesToGitHub(); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); } renderRoute(currentRoute); } }
+async function deleteCategory(cat) { if(confirm(`"${cat}" kategorisini sil? Yazılar "Genel"e taşınacak.`)) { state.posts.filter(p=>p.category===cat).forEach(p=>p.category='Genel'); state.categories = state.categories.filter(c=>c!==cat); if(!state.categories.length) state.categories=['Genel']; saveState(); try { await saveCategoriesToGitHub(); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); } renderRoute(currentRoute); } }
 function openUserModal(id=null) {
   const user = id ? getUser(id) : null;
   const isNew = !user;
   showModal(html(`
-    <div class="modal-header"><h2 class="modal-title">${isNew?'Yeni Kullanıcı':`Düzenle: ${user.username}`}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-header"><h2 class="modal-title">${isNew?'Yeni Kullanıcı':`Düzenle: ${esc(user.username)}`}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body"><form id="user-form">
       ${isNew ? '<div class="form-group"><label>Kullanıcı Adı</label><input name="username" required></div>' : ''}
       <div class="form-group"><label>Rol</label><select name="role"><option value="author" ${user?.role==='author'?'selected':''}>Yazar</option><option value="editor" ${user?.role==='editor'?'selected':''}>Editör</option><option value="admin" ${user?.role==='admin'?'selected':''}>Admin</option></select></div>
-      <div class="form-group"><label>Bio</label><textarea name="bio" rows="3">${user?.bio||''}</textarea></div>
-      <div class="form-group"><label>Web Sitesi</label><input name="website" value="${user?.website||''}" placeholder="https://..."></div>
+      <div class="form-group"><label>Bio</label><textarea name="bio" rows="3">${esc(user?.bio||'')}</textarea></div>
+      <div class="form-group"><label>Web Sitesi</label><input name="website" value="${esc(user?.website||'')}" placeholder="https://..."></div>
       ${isNew ? '<div class="form-group"><label>Şifre</label><input name="password" type="password" required autocomplete="new-password"></div>' : '<div class="form-group"><label>Yeni Şifre (boş = değiştirme)</label><input name="password" type="password" autocomplete="new-password"></div>'}
     </form></div>
     <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal()">İptal</button><button class="btn btn-primary" onclick="saveUser('${id||''}')">Kaydet</button></div>
@@ -1223,29 +2058,49 @@ function openUserModal(id=null) {
 async function saveUser(id) {
   const fd = new FormData($('#user-form'));
   const username = fd.get('username'), role = fd.get('role'), bio = fd.get('bio'), website = fd.get('website'), password = fd.get('password');
+  let targetUser = null;
   if(id) {
     const u = getUser(id); if(!u) return;
     u.role = role; u.bio = bio; u.website = website;
     if(password) u.passwordHash = await hashPass(password);
     if(u.id === state.currentUser.id) state.currentUser = {...u, passwordHash:undefined};
+    targetUser = u;
   } else {
     if(state.users.some(x=>x.username===username)) return toast('Kullanıcı adı alınmış', 'error');
     const res = await register(username, password, role);
     if(!res.ok) return;
     const u = getUser(res.user.id); u.bio = bio; u.website = website;
+    targetUser = u;
   }
-  saveState(); 
-  try { 
-    const u = getUser(id) || state.users[state.users.length-1];
-    await saveUserToGitHub(u); 
+  saveState();
+  try {
+    if(targetUser) await saveUserToGitHub(targetUser);
   } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); }
-  closeModal(); renderAdmin($('#app'));
+  if(targetUser) {
+    await logActivity(id ? 'user_update' : 'user_create', {
+      summary: id ? `"${targetUser.username}" kullanıcısını güncelledi (Rol: ${targetUser.role}).` : `"${targetUser.username}" kullanıcısını oluşturdu (Rol: ${targetUser.role}).`,
+      targetUserId: targetUser.id
+    });
+  }
+  closeModal(); renderRoute(currentRoute);
 }
-async function deleteUser(id) { if(confirm('Kullanıcıyı sil? Yazıları da silinir.')) { state.users = state.users.filter(u=>u.id!==id); state.posts = state.posts.filter(p=>p.authorId!==id); state.comments = state.comments.filter(c=>c.userId!==id); saveState(); try { await deleteUserFromGitHub(id); } catch(e) { toast('GitHub silme hatası: ' + e.message, 'error'); } renderAdmin($('#app')); } }
-async function deleteComment(id) { if(confirm('Yorumu sil?')) { state.comments = state.comments.filter(c=>c.id!==id); saveState(); try { await saveCommentsToGitHub(); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); } renderAdmin($('#app')); } }
-async function addComment(postId, content) { if(!state.currentUser) return navigate('#/login'); if(!content.trim()) return; const comment = { id:uid(), postId, userId:state.currentUser.id, content:content.trim(), createdAt:Date.now() }; state.comments.push(comment); saveState(); try { await saveCommentsToGitHub(); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); } renderRoute(currentRoute); }
+async function deleteUser(id) { if(confirm('Kullanıcıyı sil? Yazıları da silinir.')) { state.users = state.users.filter(u=>u.id!==id); state.posts = state.posts.filter(p=>p.authorId!==id); state.comments = state.comments.filter(c=>c.userId!==id); saveState(); try { await deleteUserFromGitHub(id); } catch(e) { toast('GitHub silme hatası: ' + e.message, 'error'); } renderRoute(currentRoute); } }
+async function deleteComment(id) { if(confirm('Yorumu sil?')) { state.comments = state.comments.filter(c=>c.id!==id); saveState(); try { await saveCommentsToGitHub(); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); } renderRoute(currentRoute); } }
+async function addComment(postId, content) {
+  if(!state.currentUser) return navigate('#/login');
+  if(!content.trim()) return;
+  const post = getPost(postId);
+  const comment = { id:uid(), postId, userId:state.currentUser.id, content:content.trim(), createdAt:Date.now() };
+  state.comments.push(comment); saveState();
+  try { await saveCommentsToGitHub(); } catch(e) { toast('GitHub kaydetme hatası: ' + e.message, 'error'); }
+  await logActivity('comment_add', {
+    summary: `"${post?.title || 'bir yazı'}" yazısına yorum yaptı.`,
+    postId, postTitle: post?.title || '', targetUserId: post?.authorId || null
+  });
+  renderRoute(currentRoute);
+}
 function downloadBackup() { const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `blog-backup-${Date.now()}.json`; a.click(); }
-function restoreBackup(e) { const file = e.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = ev => { try { const data = JSON.parse(ev.target.result); state = {...state, ...data}; saveState(); toast('Yedekten yüklendi'); renderAdmin($('#app')); } catch { toast('Geçersiz dosya', 'error'); } }; reader.readAsText(file); }
+function restoreBackup(e) { const file = e.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = ev => { try { const data = JSON.parse(ev.target.result); state = {...state, ...data}; saveState(); toast('Yedekten yüklendi'); renderRoute(currentRoute); } catch { toast('Geçersiz dosya', 'error'); } }; reader.readAsText(file); }
 
 
 /* ==================== EDITOR HELPERS ==================== */
@@ -1273,21 +2128,23 @@ function renderContent(raw) {
     .replace(/\n/g, '<br>');
   return '<p>' + html + '</p>';
 }
-function createPostCard(post, admin=false) {
+function createPostCard(post, editMode=false) {
   const author = getUser(post.authorId);
+  const editHref = `${panelBase()}?edit=${post.id}`;
   const card = el('article', {class:'card post-card'});
   card.innerHTML = `
     ${post.coverImage ? `<img src="${post.coverImage}" alt="">` : ''}
     <div class="post-card-content">
       <div class="post-card-meta">
         <span>${fmtDate(post.createdAt)}</span>
-        <span>${post.category}</span>
+        <span>${esc(post.category)}</span>
         <span>${fmtReadingTime(post.content)}</span>
         ${post.status==='draft' ? '<span class="badge badge-draft">Taslak</span>' : ''}
+        ${post._unsynced ? '<span class="badge badge-pending">Yerel</span>' : ''}
       </div>
-      <h2 class="post-card-title"><a href="${admin?'#/admin?edit='+post.id:'#/post?id='+post.id}" style="color:inherit">${post.title}</a></h2>
-      <p class="post-card-excerpt">${stripHtml(renderContent(post.content)).slice(0,150)}…</p>
-      <div class="post-card-footer"><span>${author?.username || 'Bilinmiyor'}</span>${admin?`<a href="#/admin?edit=${post.id}" class="action-btn">Düzenle</a>`:`<a href="#/post?id=${post.id}" class="btn btn-secondary" style="font-size:0.8rem">Oku</a>`}</div>
+      <h2 class="post-card-title"><a href="${editMode ? editHref : '#/post?id='+post.id}" style="color:inherit">${esc(post.title)}</a></h2>
+      <p class="post-card-excerpt">${esc(stripHtml(renderContent(post.content)).slice(0,150))}…</p>
+      <div class="post-card-footer"><span>${esc(author?.username || 'Bilinmiyor')}</span>${editMode ? `<a href="${editHref}" class="btn btn-secondary action-btn">Düzenle</a>` : `<a href="#/post?id=${post.id}" class="btn btn-secondary" style="font-size:0.8rem">Oku</a>`}</div>
     </div>`;
   return card;
 }
