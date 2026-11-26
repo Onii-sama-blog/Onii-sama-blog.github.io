@@ -1,5 +1,17 @@
 [
   {
+    "id": "4abadf3c-e689-4d9c-aa30-a5982ae60afa",
+    "type": "post_edit",
+    "actorId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
+    "actorName": "Kob09",
+    "actorRole": "admin",
+    "targetUserId": null,
+    "postId": "26398f10-73c3-473c-81a7-2bdfc2cdc78f",
+    "postTitle": "asdasda",
+    "summary": "\"asdasda\" başlıklı yazıyı düzenledi.",
+    "createdAt": 1795707800174
+  },
+  {
     "id": "d019a186-64ed-432a-93d5-6d932e86a44f",
     "type": "edit_request_create",
     "actorId": "31501c30-1227-43dd-be14-00cdefd87bec",
