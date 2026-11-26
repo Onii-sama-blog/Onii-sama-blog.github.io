@@ -61,7 +61,7 @@
     "toId": "3cc14cad-3227-48ce-bd85-f44fee617422",
     "text": "ebennnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
     "createdAt": 1795708087173,
-    "read": false
+    "read": true
   },
   {
     "id": "9f3f9cb0-30a6-413e-9aef-ed7cb542fdd1",
