@@ -1,0 +1,10 @@
+{
+  "id": "3cc14cad-3227-48ce-bd85-f44fee617422",
+  "username": "adm",
+  "passwordHash": "11d7615de7b89514f75049d5aea3a0de11e59b421adeff7571a3bea773a679f2",
+  "role": "author",
+  "bio": "",
+  "avatar": "",
+  "website": "",
+  "createdAt": 1795707965093
+}
