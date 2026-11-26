@@ -1,5 +1,17 @@
 [
   {
+    "id": "b6de9dcd-358b-468e-a86b-8c879b645106",
+    "type": "user_create",
+    "actorId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
+    "actorName": "Kob09",
+    "actorRole": "admin",
+    "targetUserId": "c1f3099f-2e65-4ac4-b2ed-7f11207da231",
+    "postId": null,
+    "postTitle": "",
+    "summary": "\"88\" kullanıcısını oluşturdu (Rol: author).",
+    "createdAt": 1795707889454
+  },
+  {
     "id": "1fb88879-a19d-4654-978d-da2e91137e72",
     "type": "post_edit",
     "actorId": "3fd0a1fc-ed1e-4edd-b281-187124d8950f",
